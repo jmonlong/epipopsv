@@ -1,0 +1,42 @@
+---
+title: CNVs in epilepsy
+author: Jean Monlong
+output:
+  md_document:
+    variant: markdown_github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, fig.width=10)
+```
+
+# CNVs in epilepsy
+
+## Load packages, functions and data
+
+```{r}
+library(knitr)
+library(PopSV)
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+source("EpiPopSV-scripts.R")
+
+## Load CNVs
+cnv.all = read.table("../data/cnvs-5kb_bins-EpiPopSV-allRefs.tsv.gz", header=TRUE, as.is=TRUE, sep="\t")
+cnv.all = cnv.all %>% rmOL(1) %>% mutate(project=ifelse(project=="affected", "epilepsy", "parent"))
+```
+
+## Regions with rare CNVs
+
+Focusing on rare CNVs (present in less than 5% of the samples), how many regions have a homozygous/heterozygous deletions or duplications ?
+
+```{r}
+cnv.sum = cnv.all %>% freq.range(annotate.only=TRUE)
+cnv.sum %<>% mutate(cn=round(2*fc), cn=ifelse(cn==2 & z>0,3,cn), cn=ifelse(cn==2 & z<0,1,cn), cn.class=ifelse(cn>=3, "3+",cn))
+
+sum.all = cnv.sum %>% filter(prop<.05) %>% mutate(cn.class="all") %>% group_by(cn.class) %>% summarize(region=round(sum(1/nb)), prop.all.region=1)
+sum.cn = cnv.sum %>% filter(prop<.05) %>% group_by(cn.class) %>% do(freq.range(., annotate.only=TRUE)) %>% summarize(region=round(sum(1/nb))) %>% mutate(prop.all.region=region/sum.all$region)
+sum.cn = rbind(sum.all, sum.cn)
+kable(sum.cn, digits=3)
+```

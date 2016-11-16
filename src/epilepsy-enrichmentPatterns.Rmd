@@ -34,7 +34,7 @@ load("../data/genomicFeatures.RData")
 gg = gen.feat.l$gene %>% select(geneId, geneName) %>% unique
 geneidToGenename = gg$geneName
 names(geneidToGenename) = gg$geneId
-## Exons and genes
+## Exons
 exons.grl = list(exon=subset(gen.feat.l$exon, geneType=="protein_coding"))
 ## ExAC lof intolerant
 exac = read.csv("../data/fordist_cleaned_exac_r03_march16_z_pli_rec_null_data.txt", as.is=TRUE, sep="\t")
