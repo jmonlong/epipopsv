@@ -2,9 +2,10 @@
 ## Used for the epilepsy analysis
 ##
 
-winsorF <- function(x, u=NULL){
+winsorF <- function(x, u=NULL, l=NULL){
     if(is.null(u)) u = min(median(x, na.rm=TRUE)*3, quantile(x, .95, na.rm=TRUE))
     if(any(x>u)) x[x>u] = u
+    if(any(x<l)) x[x<l] = l
     x
 }
 dbProp <- function(gr, db.gr, min.db.span=0){
