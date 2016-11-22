@@ -27,6 +27,12 @@ cnv.all = read.table("../data/cnvs-5kb_bins-EpiPopSV-allRefs.tsv.gz", header=TRU
 cnv.all = cnv.all %>% rmOL(1) %>% mutate(project=ifelse(project=="affected", "epilepsy", "parent"))
 ```
 
+## Number of CNVs per sample
+
+```{r}
+cnv.all %>% filter(project=="epilepsy") %>% group_by(sample) %>% summarize(kb=sum((end-start+1)/1e3)) %>% ggplot(aes(x=reorder(sample, kb), y=kb)) + geom_bar(stat="identity") + theme_bw() + ylab("affected genome (Kbp)") + theme(axis.text.x=element_blank()) + xlab("sample")
+```
+
 ## Regions with rare CNVs
 
 Focusing on rare CNVs (present in less than 5% of the samples), how many regions have a homozygous/heterozygous deletions or duplications ?

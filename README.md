@@ -33,16 +33,18 @@ library(rmarkdown)
 render("XXX.Rmd")
 ```
 
-You can also compile a bunch of reports using the `compile*.R` scripts. For example:
+You can also compile a bunch of reports using the `compile*.sh` scripts. For example:
 
 ```sh
-Rscript compileEpilepsy.R
+sh compileEpilepsy.sh
 ```
 
 # Notes
 
+The code was tested on fresh dockerized Ubuntu with [R 3.2.5]() and [R 3.3.1](). Windows is not recommended as the `parallel` package is not available.
+
 Results might differ slightly from the ones in our paper because several results are based on permutations or sampling procedures.
 
-The number of permutations for a few analysis have been reduced in order to be able to compute them on a laptop in a reasonable amount of time. For the paper we used high performance computers to increase the number of permutations. 
+The number of permutations for a few analysis have been reduced in order to be able to compute them on a laptop in a reasonable amount of time. For the paper we used high performance computers to increase the number of permutations.
 
 For the most time-consuming steps, we used the *caching* option during the report compilation. It means that it will take the normal time to compile the first time, but will avoid rerunning the long steps on the following compilations.
