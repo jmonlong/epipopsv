@@ -1,4 +1,4 @@
-for rmd in src/epilepsy*.Rmd
+for rmd in src/PopSV*.Rmd src/wgs*.Rmd
 do
     Rscript -e "rmarkdown::render('$rmd')"
     mv ${rmd%Rmd}md reports/

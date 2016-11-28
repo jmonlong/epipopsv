@@ -111,7 +111,7 @@ clMethod <- function(df){
   cl.cnv = cluster.cnv(df,cl.method="ave")
   ## Rand index exploration
   ri.df = randi.explore(dist(cl.cnv$d), ped, 2:(ncol(cl.cnv$d)-1))
-  list(dendro=ggfamily(cl.cnv$hc) + ggtitle(meth),
+  list(dendro=ggfamily(cl.cnv$hc) + ggtitle(meth), hc=cl.cnv$hc,
        ri.df=data.frame(method=meth, ri.df))
 }
 
