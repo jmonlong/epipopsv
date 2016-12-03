@@ -1,6 +1,6 @@
 for rmd in src/PopSV*.Rmd src/*wgs-bias.Rmd
 do
     Rscript -e "rmarkdown::render('$rmd')"
-    mv ${rmd%Rmd}md reports/
-    mv ${rmd%.Rmd}_files reports/
+    mv -f ${rmd%Rmd}md reports/
+    mv  -f ${rmd%.Rmd}_files reports/
 done
