@@ -50,8 +50,8 @@ eqtl.epi$gene = geneidToGenename[eqtl.epi$gene_id]
 seqlevels(dnaseMap) = gsub("chr","",seqlevels(dnaseMap))
 dnaseMap.epi = subset(dnaseMap, gene %in% epilepsy.genes)
 ## Load and annotate CNVs
-cnv.all = read.table("../data/cnvs-5kb_bins-EpiPopSV-allRefs.tsv.gz", header=TRUE, as.is=TRUE, sep="\t")
-cnv.all = cnv.all %>% rmOL(1) %>% mutate(project=ifelse(project=="affected", "epilepsy", "parent"))
+cnv.all = read.table("../data/cnvs-PopSV-Epilepsy-198affected-301controls-5kb.tsv.gz", header=TRUE, as.is=TRUE, sep="\t")
+cnv.all = cnv.all %>% mutate(project=ifelse(project=="affected", "epilepsy", "parent"))
 cnv.all.gr = makeGRangesFromDataFrame(cnv.all, keep.extra.columns=TRUE)
 cnv.all$prop.db = dbProp(cnv.all.gr, svs.gr)
 cnv.all$exon = overlapsAny(cnv.all.gr, exons.grl$exon)
@@ -110,7 +110,7 @@ enr.all.ss = enr.all %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, 
 enr.rare.ss = enr.rare %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="rare CNVs")
 enr.s = rbind(enr.all.ss, enr.rare.ss)
 
-ggplot(ex.enr, aes(x=feat, fill=project, y=enr)) + geom_boxplot() + theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(.~set) + geom_hline(yintercept=1, linetype=2)
+ggplot(enr.s, aes(x=feat, fill=project, y=enr)) + geom_boxplot() + theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(.~set) + geom_hline(yintercept=1, linetype=2)
 ```
 
 ### Permutation test
@@ -244,7 +244,8 @@ ggplot(cnb.rec, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(s
 Epilepsy genes tend to be large, and larger genes are more likely hit by variants (including CNVs). We can select genes with similar gene size in order to control for the size effect. We check that in the distribution of gene size are satisfactory.
 
 ```{r}
-gene.sum = exon.gr %>% as.data.frame %>% group_by(geneName) %>% summarize(exon.size=sum(end-start), start=min(start), end=max(end), size=end-start, nb.exon=n()) %>% mutate(epilepsy=geneName %in% epilepsy.genes, cnv=geneName %in% exon.cnv.genes)
+exon.cnv.genes = cnv.all %>% filter(project=="epilepsy") %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>% subsetByOverlaps(exons.grl$exon, .) %>% mcols %>% .$geneName %>% unique
+gene.sum = exons.grl$exon %>% as.data.frame %>% group_by(geneName) %>% summarize(exon.size=sum(end-start), start=min(start), end=max(end), size=end-start, nb.exon=n()) %>% mutate(epilepsy=geneName %in% epilepsy.genes, cnv=geneName %in% exon.cnv.genes)
 size.bk = c(quantile(subset(gene.sum, cnv)$size, probs=seq(0,1,.2)), Inf)
 gene.sum$size.class = cut(gene.sum$size, size.bk, include.lowest = TRUE)
 gene.sum.cnv = subset(gene.sum, cnv)
@@ -272,7 +273,7 @@ Then the new sampling-based test:
 
 ```{r}
 testGenesCnvs <- function(cnv.df, nb.perm=1e3, nb.class=5){
-  exon.cnv.genes = cnv.df %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>% subsetByOverlaps(exon.gr, .) %>% mcols %>% .$geneName %>% unique
+  exon.cnv.genes = cnv.df %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>% subsetByOverlaps(exons.grl$exon, .) %>% mcols %>% .$geneName %>% unique
   gene.sum %<>%  mutate(cnv=geneName %in% exon.cnv.genes)
   size.bk = c(quantile(subset(gene.sum, cnv)$size, probs=seq(0,1,1/nb.class)), Inf)
   gene.sum$size.class = cut(gene.sum$size, size.bk, include.lowest = TRUE)

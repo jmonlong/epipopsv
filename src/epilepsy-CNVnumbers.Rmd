@@ -25,8 +25,8 @@ library(GenomicRanges)
 source("EpiPopSV-scripts.R")
 
 ## Load CNVs
-cnv.all = read.table("../data/cnvs-5kb_bins-EpiPopSV-allRefs.tsv.gz", header=TRUE, as.is=TRUE, sep="\t")
-cnv.all = cnv.all %>% rmOL(1) %>% mutate(project=ifelse(project=="affected", "epilepsy", "parent"))
+cnv.all = read.table("../data/cnvs-PopSV-Epilepsy-198affected-301controls-5kb.tsv.gz", header=TRUE, as.is=TRUE, sep="\t")
+cnv.all = cnv.all %>% mutate(project=ifelse(project=="affected", "epilepsy", "parent"))
 ```
 
 ## Number of CNVs per sample

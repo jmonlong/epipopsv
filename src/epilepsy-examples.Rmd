@@ -53,8 +53,8 @@ seqlevels(dnaseMap) = gsub("chr","",seqlevels(dnaseMap))
 dnaseMap.epi = subset(dnaseMap, gene %in% epilepsy.genes)
 
 ## CNVs
-cnv.all = read.table("../data/cnvs-5kb_bins-EpiPopSV-allRefs.tsv.gz", header=TRUE, as.is=TRUE, sep="\t")
-cnv.all = cnv.all %>% rmOL(1) %>% mutate(project=ifelse(project=="affected", "epilepsy", "parent"))
+cnv.all = read.table("../data/cnvs-PopSV-Epilepsy-198affected-301controls-5kb.tsv.gz", header=TRUE, as.is=TRUE, sep="\t")
+cnv.all = cnv.all %>% mutate(project=ifelse(project=="affected", "epilepsy", "parent"))
 cnv.all.gr = cnv.all %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE)
 cnv.all$prop.db = cnv.all.gr %>% dbProp(., svs.gr)
 cnv.all$exon.epi = overlapsAny(cnv.all.gr, exons.grl$exon.epi)
