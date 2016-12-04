@@ -17,6 +17,22 @@ dbProp <- function(gr, db.gr, min.db.span=0){
     prop[as.numeric(names(ol.t))] = as.numeric(ol.t)
     prop
 }
+dbPropDf <- function(df, db.gr, min.db.span=0, type="any", maxgap=0){
+    gr = makeGRangesFromDataFrame(df, keep.extra.columns=TRUE)
+    ol = findOverlaps(gr, db.gr, maxgap=maxgap, type=type) %>% as.data.frame
+    ol$ol.span = width(pintersect(gr[ol$queryHits], db.gr[ol$subjectHits]))/width(db.gr)[ol$subjectHits]
+    ol = subset(ol, ol.span>min.db.span)
+    ol$prop.db = db.gr$prop[ol$subjectHits]
+    ol$proj.db = db.gr$project[ol$subjectHits]
+    ol %<>% group_by(queryHits) %>% mutate(nb.proj.db=length(unique(proj.db))) %>% arrange(desc(prop.db)) %>% do(head(.,1))
+    df$prop.db = df$nb.proj.db = 0
+    df$prop.db[ol$queryHits] = ol$prop.db
+    df$prop.db = ifelse(df$prop.db>1, 1, df$prop.db)
+    df$nb.proj.db[ol$queryHits] = ol$nb.proj.db
+    df$proj.db = NA
+    df$proj.db[ol$queryHits] = ol$proj.db
+    df
+}
 rmOL <- function(df, nb.ol=1){
     df.s = df %>% group_by(project, sample) %>% summarize(kb=sum((end-start)/1e3)) %>% arrange(desc(kb))
     print(head(as.data.frame(df.s), nb.ol))

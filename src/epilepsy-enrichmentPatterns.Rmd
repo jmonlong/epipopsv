@@ -26,8 +26,6 @@ library(parallel)
 source("EpiPopSV-scripts.R")
 
 ## Load genomic annotations
-load("../data/gencodev19-gviz-simp.RData")
-gtf.simp %<>% mutate(chromosome=gsub("chr","",chromosome))
 load("../data/SVdatabase.RData")
 load("../data/genomicFeatures.RData")
 ## geneId -> geneName
@@ -57,9 +55,7 @@ cnv.all = cnv.all %>% rmOL(1) %>% mutate(project=ifelse(project=="affected", "ep
 cnv.all.gr = makeGRangesFromDataFrame(cnv.all, keep.extra.columns=TRUE)
 cnv.all$prop.db = dbProp(cnv.all.gr, svs.gr)
 cnv.all$exon = overlapsAny(cnv.all.gr, exons.grl$exon)
-cont.gr = reduce(subset(cnv.all.gr, project!="epilepsy"))
 epi.gr = reduce(subset(cnv.all.gr, project=="epilepsy"))
-cnv.all$parents = overlapsAny(cnv.all.gr, cont.gr)
 cnv.all$exon.epi = overlapsAny(cnv.all.gr, exons.grl$exon.epi)
 cnv.all$enhancer.epi = overlapsAny(cnv.all.gr, dnaseMap.epi) | overlapsAny(cnv.all.gr, eqtl.epi)
 epid = distanceToNearest(cnv.all.gr, exons.grl$exon.epi) %>% as.data.frame
@@ -110,11 +106,11 @@ enr.rare = do.call(rbind, mclapply(1:(NB.SUBSAMP*NB.PERMS), permF, cnv.df=subset
 ### Graphs for a batch of sub-sampling
 
 ```{r}
-enr.all.ss = enr.all %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control])
-ggplot(enr.all.ss, aes(x=reorder(feat, enr, mean), fill=project, y=enr)) + geom_boxplot() + theme_bw() + xlab("") + ylab("fold-enrichment") + coord_flip() + ggtitle("SV enrichment in exons") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + theme(legend.position="bottom")
+enr.all.ss = enr.all %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="all CNVs")
+enr.rare.ss = enr.rare %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="rare CNVs")
+enr.s = rbind(enr.all.ss, enr.rare.ss)
 
-enr.rare.ss = enr.rare %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control])
-ggplot(enr.rare.ss, aes(x=reorder(feat, enr, mean), fill=project, y=enr)) + geom_boxplot() + theme_bw() + xlab("") + ylab("fold-enrichment") + coord_flip() + ggtitle("Rare SV enrichment in exons") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + theme(legend.position="bottom")
+ggplot(ex.enr, aes(x=feat, fill=project, y=enr)) + geom_boxplot() + theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(.~set) + geom_hline(yintercept=1, linetype=2)
 ```
 
 ### Permutation test
@@ -241,21 +237,7 @@ ggplot(cnb.rec, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(s
 ```
 
 
-## Epilepsy-specific deletions hitting epilepsy genes
-
-```{r}
-epi.dels = cnv.all %>% filter(!parents, z<0)
-```
-
-### Fisher test
-
-```{r}
-exon.gr = exons.grl$exon
-exon.cnv.genes = epi.dels %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>% subsetByOverlaps(exon.gr, .) %>% mcols %>% .$geneName %>% unique
-ft.table = table(unique(exon.gr$geneName) %in% epilepsy.genes)
-ft.table = rbind(ft.table, table(exon.cnv.genes %in% epilepsy.genes))
-fisher.test(ft.table)
-```
+## Rare CNVs hitting epilepsy genes
 
 ### Controlling for the gene size
 
@@ -303,18 +285,54 @@ testGenesCnvs <- function(cnv.df, nb.perm=1e3, nb.class=5){
     gene.cont = gene.sum$geneName[unlist(gene.cont.ii)]
     sum(gene.cont %in% epilepsy.genes)
   }, mc.cores=NB.CORES)
-  data.frame(odds.ratio = obs.epi/mean(unlist(exp.epi.size)),
-             gene=nrow(gene.sum.cnv),
-             gene.epi=obs.epi,
-             gene.epi.cont=mean(unlist(exp.epi.size)),
-             pv=(sum(obs.epi<=unlist(exp.epi.size))+1)/(length(exp.epi.size)+1))
+  list(exp=unlist(exp.epi.size), obs=obs.epi,
+    sum.df = data.frame(odds.ratio = obs.epi/mean(unlist(exp.epi.size)),
+                        gene=nrow(gene.sum.cnv),
+                        gene.epi=obs.epi,
+                        gene.epi.cont=mean(unlist(exp.epi.size)),
+                        pv=(sum(obs.epi<=unlist(exp.epi.size))+1)/(length(exp.epi.size)+1))
+  )
 }
+```
 
-test.epi.genes.sum = rbind(
-    testGenesCnvs(epi.dels, nb.perm=2e3, nb.class=1) %>% mutate(test="all genes, deletions not in parents"),
-    testGenesCnvs(epi.dels, nb.perm=1e4, nb.class=5) %>% mutate(test="size-controlled genes, deletions not in parents"),
-    testGenesCnvs(subset(epi.dels, prop.db==0), nb.perm=1e4, nb.class=5) %>% mutate(test="size-controlled genes, deletions not in parents or controls")
-    )
+### Exonic deletions absent from the public databases
 
+```{r}
+test.epi.genes = list(
+  allGenesDelNoDB=testGenesCnvs(cnv.all %>% filter(project=="epilepsy", z<0, prop.db==0), nb.perm=1e3, nb.class=1),
+  sizeGenesDelNoDB=testGenesCnvs(cnv.all %>% filter(project=="epilepsy", z<0, prop.db==0), nb.perm=1e3, nb.class=5)
+)
+
+test.epi.genes.sum = do.call(rbind, lapply(names(test.epi.genes), function(x) data.frame(test=x, test.epi.genes[[x]]$sum.df)))
 kable(test.epi.genes.sum)
+
+test.df = rbind(data.frame(exp=test.epi.genes$allGenesDelNoDB$exp, test="all genes"),
+                data.frame(exp=test.epi.genes$sizeGenesDelNoDB$exp, test="size-controlled genes"))
+ggplot(test.df, aes(x=exp, fill=test)) + geom_histogram(position="dodge", binwidth=1) + theme_bw() + geom_vline(xintercept=test.epi.genes$sizeGenesDelNoDB$obs, linetype=2) + xlab("number of epilepsy genes among sampled genes") + ylab("number of sampling") + scale_fill_brewer(palette="Set2",name="sampling") + theme(legend.position="bottom") + ggtitle("Genes hit deletions never seen in public databases") + annotate("text", x=test.epi.genes$sizeGenesDelNoDB$obs, y=100, label="observed", vjust=-1, angle=-90)
+```
+
+### Exploring the enrichments
+
+Here again, the number of permutations has been decreased compared to what was used in the study.
+
+```{r}
+cnv.sets = cnv.all %>% mutate(type=ifelse(z<0, "deletion","duplication")) %>% select(project, sample, chr, start, end, type) %>% as.data.frame
+cnv.sets$prop.db = cnv.sets %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>% dbProp(., svs.gr)
+
+load("../data/cnvs-PopSV-twin-5kbp-FDR001.RData")
+tw.sets = res.df %>% mutate(project="Twins", type=ifelse(z<0, "deletion","duplication")) %>% select(project, sample, chr, start, end, type)
+tw.sets$prop.db = tw.sets %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>% dbProp(., subset(svs.gr, project!="PopSV"))
+cnv.sets = rbind(cnv.sets, tw.sets)
+```
+
+```{r, cache=TRUE}
+freq.r = c(1,.1,.01,.001,.0001, 0)
+enr.epi.freq = lapply(freq.r, function(freq.max){
+  cnv.sets %>% filter(prop.db <= freq.max) %>% group_by(project, type) %>% do(testGenesCnvs(., nb.perm=1e3)$sum.df) %>% mutate(freq=freq.max)
+})
+enr.epi.freq = do.call(rbind, enr.epi.freq)
+```
+
+```{r}
+ggplot(enr.epi.freq, aes(x=factor(freq), y=odds.ratio, colour=project, group=project)) + geom_line() + geom_point(aes(size=cut(pv, c(0,.05,1)))) + theme_bw() + ylim(0, max(enr.epi.freq$odds.ratio)) + scale_colour_hue() + geom_hline(yintercept=1, linetype=3) + scale_size_manual(name="P-value", labels=c("<0.05",">0.05"), values=c(4,2)) + xlab("CNV frequency in public databases") + facet_grid(type~.) + ylab("fold-enrichment")
 ```
