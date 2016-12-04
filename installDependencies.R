@@ -1,4 +1,4 @@
-pkgs = c("devtools","knitr","rmarkdown","magrittr","dplyr", "RColorBrewer","ggplot2","parallel", "tidyr", "ggdendro", "fpc", "formatR")
+pkgs = c("devtools","knitr","rmarkdown","magrittr","dplyr", "RColorBrewer","ggplot2","parallel", "tidyr", "ggdendro", "fpc", "formatR", "data.table")
 pkgs.bioc = c("GenomicRanges","Gviz","BSgenome.Hsapiens.UCSC.hg19", "Rsamtools", "DNAcopy")
 pkgs.github = c("jmonlong/PopSV")
 
