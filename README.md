@@ -1,22 +1,20 @@
-This repository hosts the source code and instructions to reproduce the analysis and results from our study on epilepsy and structural variation.
+This repository hosts the source code and instructions to reproduce the analysis and results from our study on epilepsy and copy number variation.
 
-To look at the code and resulting graphs/numbers, have a look at the R-markdown reports in the `reports` folder and scripts in the `src` folder.
+If you just want the CNV calls, find them in the [FigShare repository](https://figshare.com/s/20dfdedcc4718e465185), or directly [here](https://ndownloader.figshare.com/files/6994223?private_link=20dfdedcc4718e465185).
+
+To review the code and resulting graphs/numbers, have a look at the R-markdown reports in the `reports` folder and scripts in the `src` folder.
 
 To rerun the analysis, follow these steps:
 
 # Step 1: Download the relevant data
 
-The necessary data has been deposited on [FigShare](). Depending on the analysis, you might not need to download all the data.
+The necessary data has been deposited on [FigShare](https://figshare.com/s/20dfdedcc4718e465185). Depending on the analysis, you might not need to download all the data.
 
-The easiest way to download the data is to use the scripts `download*.sh`. For example, to download all the data (XX Mb):
+The easiest way to download all the data (1.5 GB) and unzip it in the `data` folder.
 
-```sh
-sh downloadAll.sh
-```
+Soon, we will prepare different packs that will be downloadable with:
 
-The different packs are:
-
-+ `downloadBenchmark.sh` (XX Mb) for the *in silico* benchmark of PopSV and comparison with existing methods, using the [Twin study]() and [CageKid]() datasets.
++ `downloadBenchmark.sh` (XX Mb) for the *in silico* benchmark of PopSV and comparison with existing methods, using the [Twin study](https://www.ebi.ac.uk/ena/data/view/PRJEB8308) and [CageKid](https://www.ebi.ac.uk/ega/studies/EGAS00001000083) datasets.
 + `downloadEpilepsy.sh` (XX Mb) for the SV analysis in the epilepsy/control cohort.
 
 
@@ -43,7 +41,7 @@ You can already see the reports produced by these scripts in the `reports` folde
 
 # Notes
 
-The code was tested on fresh dockerized Ubuntu with [R 3.2.5]() and [R 3.3.1](). Windows is not recommended as the `parallel` package is not available.
+The code was tested on fresh dockerized Ubuntu with [R 3.2.5](). Windows is not recommended as the `parallel` package is not available.
 
 Results might differ slightly from the ones in our paper because several results are based on permutations or sampling procedures.
 

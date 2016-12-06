@@ -98,7 +98,7 @@ permF <- function(rr, cnv.df, feat.grl) {
     do.call(rbind, res)
 }
 
-NB.SUBSAMP = 10
+NB.SUBSAMP = 100
 NB.PERMS = 20
 exons.all.pli = exons.grl
 exons.all.pli$exon.epi = NULL
@@ -140,10 +140,10 @@ enr.all %>% filter(set == "exp") %>% mutate(batch = cut(rep, NB.PERMS)) %>%
     sum(epi.enr))/(1 + n())) %>% kable
 ```
 
-| feat     |         pv|
-|:---------|----------:|
-| exon     |  0.8571429|
-| exon.pli |  0.2380952|
+| feat     |        pv|
+|:---------|---------:|
+| exon     |  1.000000|
+| exon.pli |  0.047619|
 
 ``` r
 enr.rare.ss.med = enr.rare.ss %>% group_by(feat, project) %>% summarize(enr.med = median(enr))
@@ -156,10 +156,10 @@ enr.rare %>% filter(set == "exp") %>% mutate(batch = cut(rep, NB.PERMS)) %>%
     sum(epi.enr))/(1 + n())) %>% kable
 ```
 
-| feat     |         pv|
-|:---------|----------:|
-| exon     |  0.7619048|
-| exon.pli |  0.6666667|
+| feat     |        pv|
+|:---------|---------:|
+| exon     |  0.047619|
+| exon.pli |  0.047619|
 
 ### Permutation test: a resampling trick
 
@@ -169,7 +169,7 @@ We can approximate the permuted P-value by resampling the sub-sampling.
 
 ``` r
 NEW.NB.PERMS = 1000
-NEW.NB.SUBSAMP = 30
+NEW.NB.SUBSAMP = 100
 bootstrapEnr <- function(df, nb.bs, nb.ss) {
     data.frame(batch = 1:nb.bs, enr = sapply(1:nb.bs, function(ii) median(sample(df$enr, 
         nb.ss))))
@@ -183,10 +183,10 @@ enr.all %>% filter(set == "exp") %>% group_by(feat, project, rep) %>% summarize(
     summarize(pv = (1 + sum(epi.enr))/(1 + n())) %>% kable
 ```
 
-| feat     |         pv|
-|:---------|----------:|
-| exon     |  0.9840160|
-| exon.pli |  0.0619381|
+| feat     |        pv|
+|:---------|---------:|
+| exon     |  1.000000|
+| exon.pli |  0.004995|
 
 ``` r
 enr.rare %>% filter(set == "exp") %>% group_by(feat, project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% 
@@ -197,10 +197,10 @@ enr.rare %>% filter(set == "exp") %>% group_by(feat, project, rep) %>% summarize
     summarize(pv = (1 + sum(epi.enr))/(1 + n())) %>% kable
 ```
 
-| feat     |         pv|
-|:---------|----------:|
-| exon     |  0.8141858|
-| exon.pli |  0.8261738|
+| feat     |        pv|
+|:---------|---------:|
+| exon     |  0.005994|
+| exon.pli |  0.000999|
 
 Rare exonic CNVs are less private in the epilepsy cohort
 --------------------------------------------------------
@@ -275,30 +275,30 @@ rare.ex.fc %>% group_by(project, nb, rep) %>% summarize(n = n()/nb[1]) %>% group
 
 ``` r
 diff.obs = rare.ex.f %>% group_by(project, nb) %>% summarize(n = n()/nb[1]) %>% 
-    group_by(project) %>% summarize(non.priv = sum(n[nb > 1])/sum(n)) %>% arrange(desc(project)) %>% 
+    group_by(project) %>% summarize(non.priv = sum(n[nb > 1])/sum(n)) %>% arrange(project) %>% 
     .$non.priv %>% diff
 diff.exp = replicate(1000, {
     rare.ex.f %>% ungroup %>% mutate(project = sample(project)) %>% group_by(project, 
         nb) %>% summarize(n = n()/nb[1]) %>% group_by(project) %>% summarize(non.priv = sum(n[nb > 
-        1])/sum(n)) %>% arrange(desc(project)) %>% .$non.priv %>% diff
+        1])/sum(n)) %>% arrange(project) %>% .$non.priv %>% diff
 })
 
 diff.obs.noext = rare.ex.f.noext %>% group_by(project, nb) %>% summarize(n = n()/nb[1]) %>% 
-    group_by(project) %>% summarize(non.priv = sum(n[nb > 1])/sum(n)) %>% arrange(desc(project)) %>% 
+    group_by(project) %>% summarize(non.priv = sum(n[nb > 1])/sum(n)) %>% arrange(project) %>% 
     .$non.priv %>% diff
 diff.exp.noext = replicate(1000, {
     rare.ex.f.noext %>% ungroup %>% mutate(project = sample(project)) %>% group_by(project, 
         nb) %>% summarize(n = n()/nb[1]) %>% group_by(project) %>% summarize(non.priv = sum(n[nb > 
-        1])/sum(n)) %>% arrange(desc(project)) %>% .$non.priv %>% diff
+        1])/sum(n)) %>% arrange(project) %>% .$non.priv %>% diff
 })
 
 diff.obs.fc = rare.ex.fc %>% group_by(project, nb) %>% summarize(n = n()/nb[1]) %>% 
-    group_by(project) %>% summarize(non.priv = sum(n[nb > 1])/sum(n)) %>% arrange(desc(project)) %>% 
+    group_by(project) %>% summarize(non.priv = sum(n[nb > 1])/sum(n)) %>% arrange(project) %>% 
     .$non.priv %>% diff
 diff.exp.fc = replicate(1000, {
     rare.ex.fc %>% ungroup %>% mutate(project = sample(project)) %>% group_by(project, 
         nb) %>% summarize(n = n()/nb[1]) %>% group_by(project) %>% summarize(non.priv = sum(n[nb > 
-        1])/sum(n)) %>% arrange(desc(project)) %>% .$non.priv %>% diff
+        1])/sum(n)) %>% arrange(project) %>% .$non.priv %>% diff
 })
 ```
 
@@ -312,9 +312,9 @@ kable(priv.test)
 
 | test                           |        pv|
 |:-------------------------------|---------:|
-| all samples                    |  1.000000|
-| top 20 extreme samples removed |  1.000000|
-| french-canadian                |  0.000999|
+| all samples                    |  0.000999|
+| top 20 extreme samples removed |  0.005994|
+| french-canadian                |  0.003996|
 
 Non-coding rare CNVs
 --------------------
@@ -482,8 +482,8 @@ kable(test.epi.genes.sum)
 
 | test             |  odds.ratio|  gene|  gene.epi|  gene.epi.cont|        pv|
 |:-----------------|-----------:|-----:|---------:|--------------:|---------:|
-| allGenesDelNoDB  |    2.605763|   921|        17|          6.524|  0.000999|
-| sizeGenesDelNoDB |    1.781037|   921|        17|          9.545|  0.019980|
+| allGenesDelNoDB  |    2.623862|   921|        17|          6.479|  0.000999|
+| sizeGenesDelNoDB |    1.770280|   921|        17|          9.603|  0.008991|
 
 ``` r
 test.df = rbind(data.frame(exp = test.epi.genes$allGenesDelNoDB$exp, test = "all genes"), 

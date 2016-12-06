@@ -95,7 +95,7 @@ permF <-  function(rr, cnv.df, feat.grl){
     do.call(rbind, res)
 }
 
-NB.SUBSAMP = 10
+NB.SUBSAMP = 100
 NB.PERMS = 20
 exons.all.pli = exons.grl
 exons.all.pli$exon.epi = NULL
@@ -133,7 +133,7 @@ We can approximate the permuted P-value by resampling the sub-sampling.
 
 ```{r}
 NEW.NB.PERMS = 1000
-NEW.NB.SUBSAMP = 30
+NEW.NB.SUBSAMP = 100
 bootstrapEnr <- function(df, nb.bs, nb.ss){
     data.frame(batch=1:nb.bs, enr=sapply(1:nb.bs, function(ii) median(sample(df$enr, nb.ss))))
 }
@@ -177,19 +177,19 @@ rare.ex.fc %>% group_by(project, nb, rep) %>% summarize(n=n()/nb[1]) %>% group_b
 ### Permutation test
 
 ```{r, cache=TRUE}
-diff.obs = rare.ex.f %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(desc(project)) %>% .$non.priv %>% diff
+diff.obs = rare.ex.f %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(project) %>% .$non.priv %>% diff
 diff.exp = replicate(1000, {
-  rare.ex.f %>% ungroup %>% mutate(project=sample(project)) %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(desc(project)) %>% .$non.priv %>% diff
+  rare.ex.f %>% ungroup %>% mutate(project=sample(project)) %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(project) %>% .$non.priv %>% diff
 })
 
-diff.obs.noext = rare.ex.f.noext %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(desc(project)) %>% .$non.priv %>% diff
+diff.obs.noext = rare.ex.f.noext %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(project) %>% .$non.priv %>% diff
 diff.exp.noext = replicate(1000, {
-  rare.ex.f.noext %>% ungroup %>% mutate(project=sample(project)) %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(desc(project)) %>% .$non.priv %>% diff
+  rare.ex.f.noext %>% ungroup %>% mutate(project=sample(project)) %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(project) %>% .$non.priv %>% diff
 })
 
-diff.obs.fc = rare.ex.fc %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(desc(project)) %>% .$non.priv %>% diff
+diff.obs.fc = rare.ex.fc %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(project) %>% .$non.priv %>% diff
 diff.exp.fc = replicate(1000, {
-  rare.ex.fc %>% ungroup %>% mutate(project=sample(project)) %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(desc(project)) %>% .$non.priv %>% diff
+  rare.ex.fc %>% ungroup %>% mutate(project=sample(project)) %>% group_by(project, nb) %>% summarize(n=n()/nb[1]) %>% group_by(project) %>% summarize(non.priv=sum(n[nb>1])/sum(n)) %>% arrange(project) %>% .$non.priv %>% diff
 })
 ```
 
