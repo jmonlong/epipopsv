@@ -85,7 +85,7 @@ tgp %<>% select(chr, start, end, size, prop, type, project)
 
 ## GoNL
 
-```{r}
+```{r, eval=FALSE}
 if(!file.exists("20160525_GoNL_AF_genotyped_SVs.vcf.gz")) download.file("https://molgenis26.target.rug.nl/downloads/gonl_public/variants/release6/20160525_GoNL_AF_genotyped_SVs.vcf.gz", "20160525_GoNL_AF_genotyped_SVs.vcf.gz")
 gonl = read.table("20160525_GoNL_AF_genotyped_SVs.vcf.gz",as.is=TRUE,sep="\t",quote="")
 colnames(gonl) = c("chr","start","id","ref","alt","qual","filter","info")
@@ -146,7 +146,7 @@ The catalog from PopSV is based on a Twin study and normals from CageKig project
 
 All the CNVs are merged into one GRanges object, annotated with the frequency in each cohort.
 
-```{r}
+```{r, eval=FALSE}
 svs.gr = do.call(rbind, list(popsv, tgp, gonl, sud, hand)) %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE)
 save(svs.gr, file="../data/SVdatabase.RData")
 ```

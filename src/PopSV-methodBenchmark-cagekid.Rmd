@@ -56,6 +56,11 @@ The distribution shows the average proportion of calls in one sample, grouped by
 
 
 ```{r}
+res.l = list()
+cnv.s.lumpy = for(ch in unique(cnv.s$chr)){
+                message(ch)
+                res.l = c(res.l, list(freq.range(subset(cnv.s, chr==ch & method=="LUMPY"), annotate.only=TRUE)))
+              }
 cnv.s = cnv.s %>% group_by(method) %>% do(freq.range(., annotate.only=TRUE))
 cnv.ave.samp = cnv.s %>% mutate(prop=cut(prop, seq(0,1,.05), labels=seq(0.05,1,.05))) %>% group_by(method, sample, prop) %>% summarize(call=n()) %>% group_by(method, sample) %>% mutate(call=call/sum(call)) 
 cnv.ave.samp %>% group_by(method, prop) %>% summarize(call=mean(call)) %>% ggplot(aes(x=prop, y=call, fill=method)) + geom_bar(stat="identity") + facet_grid(method~., scales="free") + theme_bw() + scale_fill_manual(values=cbPalette) + guides(fill=FALSE) + xlab("frequency") + ylab("proportion of calls")

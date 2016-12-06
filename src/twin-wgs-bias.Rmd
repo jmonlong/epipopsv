@@ -1,5 +1,5 @@
 ---
-title: Epilepsy - Bias in Whole-Genome Sequencing Coverage
+title: Twin - Bias in Whole-Genome Sequencing Coverage
 author: Jean Monlong
 output:
   md_document:
@@ -10,7 +10,7 @@ output:
 knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, fig.width=10, tidy=TRUE)
 ```
 
-# Epilepsy - Bias in Whole-Genome Sequencing Coverage
+# Twin - Bias in Whole-Genome Sequencing Coverage
 
 ## Load packages, functions and data
 
@@ -29,7 +29,7 @@ plot.bc <- function(df,sample.names,max.quant=.99, log10=FALSE){
   gp
 }
 
-bc.df = read.table("../data/epilepsy-5kbp-bc-gcCor.tsv.bgz", as.is=TRUE, sep="\t", header=TRUE)
+bc.df = read.table("../data/twin-5kbp-bc-gcCor.tsv.bgz", as.is=TRUE, sep="\t", header=TRUE)
 samples = colnames(bc.df)[-(1:3)]
 sub.samples = sample(samples,6)
 ```
@@ -146,7 +146,7 @@ ggplot(subset(rk2.m, set!="WGS"),aes(x=sample, colour=coverage)) + ggplot2::geom
 
 
 ```{r, echo=FALSE, eval=FALSE}
-pdf("epilepsy-biasWGS.pdf", 8, 6)
+pdf("twin-biasWGS.pdf", 8, 6)
 plot.bc(bc.norm, sub.samples, 1) + ggtitle("Normalized bin counts")
 plot.bc(bc.norm.sim, sub.samples, 1) + ggtitle("Control : simulated bin counts")
 plot.bc(bc.norm.shuf, sub.samples, 1) + ggtitle("Control : shuffled bin counts")
