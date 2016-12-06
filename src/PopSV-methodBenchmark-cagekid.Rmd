@@ -24,8 +24,7 @@ source("EpiPopSV-scripts.R")
 
 ## Get normal-tumor information
 load("../data/cagekid-5kbp-files.RData")
-## Get 50 random samples. In paper all samples were used but needs more memory.
-normals = sample(subset(files.df, status=="normal")$sample,50)
+normals = subset(files.df, status=="normal")$sample
 inds = subset(files.df, sample %in% normals)$individual
 tumors = subset(files.df, individual %in% inds & status=="tumor")$sample
 
@@ -39,6 +38,7 @@ cnv.l = subset(res.df, sample %in% tumors)
 rm(res.df)
 cnv.l = data.frame(method="PopSV", set="loose", cnv.l[, c("sample","chr","start","end")])
 load("../data/cnvs-otherMethods-cagekid-5kbp.RData")
+others.df = subset(others.df, method!="LUMPY")
 cnv.s = rbind(cnv.s, subset(others.df, sample %in% normals & set=="stringent")[, c("method","set","sample","chr","start","end")])
 cnv.l = rbind(cnv.l, subset(others.df, sample %in% tumors & set=="loose")[,  c("method","set","sample","chr","start","end")])
 rm(others.df)
@@ -50,7 +50,8 @@ cnv.s$method = factor(as.character(cnv.s$method), levels=methods.f)
 cnv.l$method = factor(as.character(cnv.l$method), levels=methods.f)
 ```
 
-		
+Note: LUMPY calls are not included here (yet), because of memory problems during the frequency annotation. For the paper, we used high memory node on a computing cluster to include these calls.
+
 ## Systematic calls ?
 
 How many systematic calls do we get in a typical sample ? 

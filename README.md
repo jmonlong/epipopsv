@@ -26,7 +26,7 @@ Many different packages are used throughout the analysis. The commands to instal
 
 # Step 3: Compile the R-markdown reports
 
-The raw R-markdown reports are located in the `src` folder. The reports produced by these scripts are located in the `reports` folder. To recompile them simply run:
+The raw R-markdown reports are located in the `src` folder. To recompile them simply run:
 
 ```r
 library(rmarkdown)
@@ -38,6 +38,8 @@ You can also compile a bunch of reports using the `compile*.sh` scripts. For exa
 ```sh
 sh compileEpilepsy.sh
 ```
+
+You can already see the reports produced by these scripts in the `reports` folder. 
 
 # Notes
 

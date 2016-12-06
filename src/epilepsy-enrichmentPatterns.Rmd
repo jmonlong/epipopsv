@@ -51,11 +51,11 @@ seqlevels(dnaseMap) = gsub("chr","",seqlevels(dnaseMap))
 dnaseMap.epi = subset(dnaseMap, gene %in% epilepsy.genes)
 ## Load and annotate CNVs
 cnv.all = read.table("../data/cnvs-PopSV-Epilepsy-198affected-301controls-5kb.tsv.gz", header=TRUE, as.is=TRUE, sep="\t")
-cnv.all = cnv.all %>% mutate(project=ifelse(project=="affected", "epilepsy", "parent"))
+cnv.all = cnv.all %>% mutate(project=ifelse(project=="affected", "patients", "controls"))
 cnv.all.gr = makeGRangesFromDataFrame(cnv.all, keep.extra.columns=TRUE)
 cnv.all$prop.db = dbProp(cnv.all.gr, svs.gr)
 cnv.all$exon = overlapsAny(cnv.all.gr, exons.grl$exon)
-epi.gr = reduce(subset(cnv.all.gr, project=="epilepsy"))
+epi.gr = reduce(subset(cnv.all.gr, project=="patients"))
 cnv.all$exon.epi = overlapsAny(cnv.all.gr, exons.grl$exon.epi)
 cnv.all$enhancer.epi = overlapsAny(cnv.all.gr, dnaseMap.epi) | overlapsAny(cnv.all.gr, eqtl.epi)
 epid = distanceToNearest(cnv.all.gr, exons.grl$exon.epi) %>% as.data.frame
@@ -119,10 +119,10 @@ It takes time to draw the control regions for each sub-sampling, hence the numbe
 
 ```{r}
 enr.all.ss.med = enr.all.ss %>% group_by(feat, project) %>% summarize(enr.med=median(enr))
-enr.all %>% filter(set=="exp") %>% mutate(batch=cut(rep,NB.PERMS)) %>% group_by(feat, project, rep, batch) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat, batch) %>% summarize(enr=median(enr)) %>% merge(enr.all.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="epilepsy"]-enr[project!="epilepsy"], epi.med=enr.med[project=="epilepsy"]-enr.med[project!="epilepsy"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
+enr.all %>% filter(set=="exp") %>% mutate(batch=cut(rep,NB.PERMS)) %>% group_by(feat, project, rep, batch) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat, batch) %>% summarize(enr=median(enr)) %>% merge(enr.all.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="patients"]-enr[project!="patients"], epi.med=enr.med[project=="patients"]-enr.med[project!="patients"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
 
 enr.rare.ss.med = enr.rare.ss %>% group_by(feat, project) %>% summarize(enr.med=median(enr))
-enr.rare %>% filter(set=="exp") %>% mutate(batch=cut(rep,NB.PERMS)) %>% group_by(feat, project, rep, batch) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat, batch) %>% summarize(enr=median(enr)) %>% merge(enr.rare.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="epilepsy"]-enr[project!="epilepsy"], epi.med=enr.med[project=="epilepsy"]-enr.med[project!="epilepsy"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
+enr.rare %>% filter(set=="exp") %>% mutate(batch=cut(rep,NB.PERMS)) %>% group_by(feat, project, rep, batch) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat, batch) %>% summarize(enr=median(enr)) %>% merge(enr.rare.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="patients"]-enr[project!="patients"], epi.med=enr.med[project=="patients"]-enr.med[project!="patients"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
 ```
 
 ### Permutation test: a resampling trick
@@ -138,9 +138,9 @@ bootstrapEnr <- function(df, nb.bs, nb.ss){
     data.frame(batch=1:nb.bs, enr=sapply(1:nb.bs, function(ii) median(sample(df$enr, nb.ss))))
 }
 
-enr.all %>% filter(set=="exp") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat) %>% do(bootstrapEnr(., NEW.NB.PERMS, NEW.NB.SUBSAMP)) %>% merge(enr.all.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="epilepsy"]-enr[project!="epilepsy"], epi.med=enr.med[project=="epilepsy"]-enr.med[project!="epilepsy"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
+enr.all %>% filter(set=="exp") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat) %>% do(bootstrapEnr(., NEW.NB.PERMS, NEW.NB.SUBSAMP)) %>% merge(enr.all.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="patients"]-enr[project!="patients"], epi.med=enr.med[project=="patients"]-enr.med[project!="patients"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
 
-enr.rare %>% filter(set=="exp") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat) %>% do(bootstrapEnr(., NEW.NB.PERMS, NEW.NB.SUBSAMP)) %>% merge(enr.rare.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="epilepsy"]-enr[project!="epilepsy"], epi.med=enr.med[project=="epilepsy"]-enr.med[project!="epilepsy"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
+enr.rare %>% filter(set=="exp") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat) %>% do(bootstrapEnr(., NEW.NB.PERMS, NEW.NB.SUBSAMP)) %>% merge(enr.rare.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="patients"]-enr[project!="patients"], epi.med=enr.med[project=="patients"]-enr.med[project!="patients"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
 ```
 
 
@@ -168,7 +168,7 @@ rare.ex.f.noext %>% group_by(project, nb, rep) %>% summarize(n=n()/nb[1]) %>% gr
 
 ```{r}
 french.canadians = scan("../data/frenchCanadiansControls.txt", "a", quiet=TRUE)
-cnv.fc = cnv.all %>% filter(project=="epilepsy" | sample %in% french.canadians)
+cnv.fc = cnv.all %>% filter(project=="patients" | sample %in% french.canadians)
 fc.ss = cnv.fc %>% select(sample, project) %>% unique %>% group_by(project) %>% summarize(n=n()) %>% .$n %>% unlist %>% min
 rare.ex.fc = cnv.fc %>% filter(exon, prop.db<.01) %>% group_by(project) %>% do(freqSS(., sample.size=fc.ss))
 rare.ex.fc %>% group_by(project, nb, rep) %>% summarize(n=n()/nb[1]) %>% group_by(project, rep) %>% arrange(desc(nb)) %>% mutate(cn=cumsum(n), cprop=cn/sum(n)) %>% filter(nb>1, nb<11) %>% group_by(project, nb) %>% summarize(cprop.5=quantile(cprop, probs=.05), cprop.95=quantile(cprop, probs=.95), cprop=median(cprop)) %>% ggplot(aes(x=nb, y=cprop, colour=project, fill=project)) + geom_ribbon(aes(ymin=cprop.5, ymax=cprop.95), colour=FALSE, alpha=.2) + geom_line(alpha=.7) + geom_point(size=2) + scale_colour_brewer(name="", palette="Set1") + scale_fill_brewer(name="", palette="Set1") + theme_bw() + scale_x_continuous(breaks=2:10, labels=paste0(c(2:10),"+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs") + ggtitle("French-Canadians only")
@@ -221,7 +221,7 @@ cnv.ss = cnv.all %>% group_by(project) %>% do(freqEpiRareSS(., nb.rep=100))
 
 ```{r}
 cnb.nc = cnv.ss %>% filter(prop.db<.01, nb<10, !exon) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))
-ggplot(subset(cnb.nc, d<5e4), aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.nc, d<5e4 & project=="parent")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples")
+ggplot(subset(cnb.nc, d<5e4), aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.nc, d<5e4 & project=="controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples")
 ```
 
 ### Rare non-coding CNVs that overlaps functional annotations
@@ -230,10 +230,10 @@ Focusing on CNVs that overlaps an eQTL for the epilepsy gene, or a DNase I hyper
 
 ```{r}
 cnb.df = cnv.ss %>% filter(prop.db<.01, nb<10, !exon, enhancer.epi) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))
-ggplot(cnb.df, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.df, project=="parent")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples")
+ggplot(cnb.df, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.df, project=="controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples")
 
 cnb.rec = cnv.ss %>% filter(prop.db<.01, nb>1, nb<10, !exon, enhancer.epi) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))
-ggplot(cnb.rec, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.rec, project=="parent")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + ggtitle("Non-private")
+ggplot(cnb.rec, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.rec, project=="controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + ggtitle("Non-private")
 ```
 
 
@@ -244,7 +244,7 @@ ggplot(cnb.rec, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(s
 Epilepsy genes tend to be large, and larger genes are more likely hit by variants (including CNVs). We can select genes with similar gene size in order to control for the size effect. We check that in the distribution of gene size are satisfactory.
 
 ```{r}
-exon.cnv.genes = cnv.all %>% filter(project=="epilepsy") %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>% subsetByOverlaps(exons.grl$exon, .) %>% mcols %>% .$geneName %>% unique
+exon.cnv.genes = cnv.all %>% filter(project=="patients") %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>% subsetByOverlaps(exons.grl$exon, .) %>% mcols %>% .$geneName %>% unique
 gene.sum = exons.grl$exon %>% as.data.frame %>% group_by(geneName) %>% summarize(exon.size=sum(end-start), start=min(start), end=max(end), size=end-start, nb.exon=n()) %>% mutate(epilepsy=geneName %in% epilepsy.genes, cnv=geneName %in% exon.cnv.genes)
 size.bk = c(quantile(subset(gene.sum, cnv)$size, probs=seq(0,1,.2)), Inf)
 gene.sum$size.class = cut(gene.sum$size, size.bk, include.lowest = TRUE)
@@ -300,8 +300,8 @@ testGenesCnvs <- function(cnv.df, nb.perm=1e3, nb.class=5){
 
 ```{r}
 test.epi.genes = list(
-  allGenesDelNoDB=testGenesCnvs(cnv.all %>% filter(project=="epilepsy", z<0, prop.db==0), nb.perm=1e3, nb.class=1),
-  sizeGenesDelNoDB=testGenesCnvs(cnv.all %>% filter(project=="epilepsy", z<0, prop.db==0), nb.perm=1e3, nb.class=5)
+  allGenesDelNoDB=testGenesCnvs(cnv.all %>% filter(project=="patients", z<0, prop.db==0), nb.perm=1e3, nb.class=1),
+  sizeGenesDelNoDB=testGenesCnvs(cnv.all %>% filter(project=="patients", z<0, prop.db==0), nb.perm=1e3, nb.class=5)
 )
 
 test.epi.genes.sum = do.call(rbind, lapply(names(test.epi.genes), function(x) data.frame(test=x, test.epi.genes[[x]]$sum.df)))

@@ -55,7 +55,7 @@ cat.epi %>% mutate(prop.db=ifelse(prop.db>1,1,prop.db)) %>% ggplot(aes(x=sqrt(pr
 We define as rare a CNV that is seen in less than 1% of the samples in all the databases:
 
 ```{r}
-cat.epi %>% mutate(prop.db=ifelse(prop.db>1,1,prop.db), db.class=cut(prop.db, c(-Inf,.01,1), labels=c("rare", "common"))) %>% ggplot(aes(x=sqrt(prop.db), fill=db.class)) + geom_histogram(bins=30,color="black") + theme_bw() + scale_fill_brewer(palette="Set2", name="") + scale_x_continuous(breaks=sqrt(bks), labels=bks) + xlab("maximum frequency in the public databases") + ylab("CNV") + theme(legend.position=c(1,1), legend.justification=c(1,1))
+cat.epi %>% mutate(prop.db=ifelse(prop.db>1,1,prop.db), db.class=cut(prop.db, c(-Inf,.01,1), labels=c("rare", "common"))) %>% ggplot(aes(x=sqrt(prop.db), fill=db.class)) + geom_histogram(bins=24,color="black") + theme_bw() + scale_fill_brewer(palette="Set2", name="") + scale_x_continuous(breaks=sqrt(bks), labels=bks) + xlab("maximum frequency in the public databases") + ylab("CNV") + theme(legend.position=c(1,1), legend.justification=c(1,1))
 ```
 
 ## Regions with rare CNVs

@@ -1,0 +1,302 @@
+PopSV - Methods benchmark using the Twin dataset
+================================================
+
+Load packages, functions and data
+---------------------------------
+
+``` r
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+library(PopSV)
+library(GenomicRanges)
+library(ggdendro)
+library(fpc)
+source("EpiPopSV-scripts.R")
+
+## Get pedigree information
+load("../data/twins-5kbp-files.RData")
+ped = files.df[, c("sample", "family", "ped")]
+ped$samp.short = paste(ped$family, ped$ped, sep = "-")
+ped$samp.short[which(is.na(ped$family))] = paste0("other", 1:sum(is.na(ped$family)))
+ped$ped2 = ped$ped %>% gsub("Twin1", "Twin", .) %>% gsub("Twin2", "Twin", .)
+rownames(ped) = ped$sample
+
+## CNVs from PopSV, FREEC, CNVnator, cn.MOPS, LUMPY
+load("../data/cnvs-PopSV-twin-5kbp-FDR001.RData")
+res.df$method = "PopSV"
+load("../data/cnvs-otherMethods-twin-5kbp.RData")
+com.cols = intersect(colnames(res.df), colnames(others.df))
+res.df = rbind(res.df[, com.cols], subset(others.df, set == "stringent")[, com.cols])
+
+## Palette and method order
+cbPalette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", 
+    "#CC79A7")
+methods.f = c("LUMPY", "CNVnator", "cn.MOPS", "FREEC", "PopSV")
+res.df$method = factor(as.character(res.df$method), levels = methods.f)
+```
+
+Systematic calls ?
+------------------
+
+How many systematic calls do we get in a typical sample ?
+
+The distribution shows the average proportion of calls in one sample, grouped by their frequency in the full cohort.
+
+``` r
+res.df = res.df %>% group_by(method) %>% do(freq.range(., annotate.only = TRUE))
+res.ave.samp = res.df %>% mutate(prop = cut(prop, seq(0, 1, 0.05), labels = seq(0.05, 
+    1, 0.05))) %>% group_by(method, sample, prop) %>% summarize(call = n()) %>% 
+    group_by(method, sample) %>% mutate(call = call/sum(call))
+res.ave.samp %>% group_by(method, prop) %>% summarize(call = mean(call)) %>% 
+    ggplot(aes(x = prop, y = call, fill = method)) + geom_bar(stat = "identity") + 
+    facet_grid(method ~ ., scales = "free") + theme_bw() + scale_fill_manual(values = cbPalette) + 
+    guides(fill = FALSE) + xlab("frequency") + ylab("proportion of calls")
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-2-1.png)
+
+``` r
+res.ave.samp %>% filter(prop == "1") %>% ggplot(aes(x = method, y = call, fill = method)) + 
+    geom_boxplot() + theme_bw() + coord_flip() + scale_fill_manual(values = cbPalette) + 
+    guides(fill = FALSE) + ylim(0, 1) + ylab("proportion of systematic calls (>95% of the cohort)")
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-2-2.png)
+
+Cluster samples using CNV calls
+-------------------------------
+
+``` r
+ggfamily <- function(hc.o) {
+    dd <- dendro_data(hc.o)
+    l.df = dd$labels
+    l.df = cbind(l.df, ped[as.character(l.df$label), ])
+    ggplot(dd$segments) + geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
+        geom_point(aes(x = x, y = y, colour = factor(family), shape = factor(ped2)), 
+            size = 5, data = l.df) + scale_colour_hue(name = "family") + scale_shape_manual(name = "", 
+        values = c(15, 16, 18, 17, 17)) + theme_minimal() + theme(plot.background = element_rect(colour = "white"), 
+        legend.position = "bottom") + scale_x_discrete(labels = l.df$samp.short, 
+        expand = 0.01) + xlab("sample") + ylab("") + theme(axis.text.x = element_text(angle = 90, 
+        hjust = 1))
+}
+cluster.cnv <- function(cnv.df, cl.method = "complete") {
+    samples = unique(cnv.df$sample)
+    samp.o = 1:length(samples)
+    names(samp.o) = samples
+    cnv.gr = makeGRangesFromDataFrame(cnv.df, keep.extra.columns = TRUE)
+    w.samp.kb = tapply(width(cnv.gr), factor(cnv.df$sample, levels = samples), 
+        function(w) sum(w/1000))
+    ol = as.data.frame(findOverlaps(cnv.gr, cnv.gr))
+    ol$samp.q = samp.o[cnv.df$sample[ol$queryHits]]
+    ol$samp.s = samp.o[cnv.df$sample[ol$subjectHits]]
+    ol = subset(ol, samp.q < samp.s)
+    ol$w.ol = width(pintersect(cnv.gr[ol$queryHits], cnv.gr[ol$subjectHits]))
+    d.df = ol %>% group_by(samp.q, samp.s) %>% summarize(d = 1 - (2 * sum(w.ol/1000)/sum(w.samp.kb[c(samp.q[1], 
+        samp.s[1])])))
+    d.mat = matrix(NA, length(samples), length(samples))
+    rownames(d.mat) = colnames(d.mat) = samples
+    for (ii in 1:nrow(d.df)) d.mat[d.df$samp.q[ii], d.df$samp.s[ii]] = d.mat[d.df$samp.s[ii], 
+        d.df$samp.q[ii]] = d.df$d[ii]
+    ## Adding pseudo count for 0 distance (happens when few regions are used,
+    ## e.g. low-coverage FREEC)
+    if (any(d.mat == 0, na.rm = TRUE)) 
+        d.mat[which(d.mat == 0)] = 1e-04
+    hc = hclust(as.dist(d.mat), method = cl.method)
+    return(list(d = d.mat, hc = hc))
+}
+randi.explore <- function(d, ped, cut.int = 2:20, methods.to.test = c("ave", 
+    "comp", "ward.D")) {
+    families = as.numeric(factor(ped$family))
+    families[which(is.na(families))] = seq(1 + max(families, na.rm = TRUE), 
+        length.out = sum(is.na(families)))
+    res.l = lapply(methods.to.test, function(mtt) {
+        hc = hclust(d, method = mtt)
+        res.l = lapply(cut.int, function(ci) {
+            gp.cl = cutree(hc, ci)
+            gp.cl = gp.cl[ped$sample]
+            data.frame(cl.meth = mtt, nb.cut = ci, rand.ind = cluster.stats(d, 
+                gp.cl, families)$corrected.rand)
+        })
+        do.call(rbind, res.l)
+    })
+    do.call(rbind, res.l)
+}
+clMethod <- function(df) {
+    meth = df$method[1]
+    pdf.l = list()
+    cl.cnv = cluster.cnv(df, cl.method = "ave")
+    ## Rand index exploration
+    ri.df = randi.explore(dist(cl.cnv$d), ped, 2:(ncol(cl.cnv$d) - 1))
+    list(dendro = ggfamily(cl.cnv$hc) + ggtitle(meth), hc = cl.cnv$hc, ri.df = data.frame(method = meth, 
+        ri.df))
+}
+
+res.l = lapply(unique(res.df$method), function(meth) {
+    clMethod(subset(res.df, method == meth))
+})
+```
+
+### Rand index
+
+``` r
+ri.df = do.call(rbind, lapply(res.l, function(l) l$ri.df))
+ri.s = aggregate(rand.ind ~ method + nb.cut, data = ri.df, max)
+ri.df = as.data.frame(ri.df)
+ri.df$method = factor(as.character(ri.df$method), levels = methods.f)
+ri.s = as.data.frame(ri.s)
+ri.s$method = factor(as.character(ri.s$method), levels = methods.f)
+
+ggplot(ri.df, aes(x = nb.cut, y = rand.ind, colour = method, linetype = cl.meth)) + 
+    geom_point() + geom_line() + ylim(0, 1) + scale_linetype(name = "clustering linkage", 
+    label = c("average", "complete", "Ward")) + theme_bw() + xlab("number of groups derived from CNV clustering") + 
+    ylab("Rand index using pedigree information") + theme(legend.position = c(1, 
+    1), legend.justification = c(1, 1), text = element_text(size = 18)) + scale_colour_manual(values = cbPalette)
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-4-1.png)
+
+``` r
+ggplot(ri.df, aes(x = nb.cut, y = rand.ind, colour = method)) + geom_point(aes(shape = cl.meth), 
+    alpha = 1) + geom_line(size = 2, alpha = 0.5, data = ri.s) + ylim(0, 1) + 
+    scale_shape(name = "clustering linkage", label = c("average", "complete", 
+        "Ward")) + theme_bw() + xlab("number of groups derived from CNV clustering") + 
+    ylab("Rand index using pedigree information") + theme(legend.position = c(1, 
+    1), legend.justification = c(1, 1), text = element_text(size = 18)) + scale_colour_manual(values = cbPalette)
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-4-2.png)
+
+### Dendogram
+
+``` r
+lapply(res.l, function(l) l$dendro)
+```
+
+    ## [[1]]
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-5-1.png)
+
+    ## 
+    ## [[2]]
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-5-2.png)
+
+    ## 
+    ## [[3]]
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-5-3.png)
+
+    ## 
+    ## [[4]]
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-5-4.png)
+
+    ## 
+    ## [[5]]
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-5-5.png)
+
+Replication in the second twin
+------------------------------
+
+``` r
+twins = subset(files.df, grepl("Twin", ped))$sample
+cnv.s = subset(res.df, sample %in% twins)
+load("../data/cnvs-PopSV-twin-5kbp-FDR05.RData")
+res.df = subset(res.df, sample %in% twins)
+res.df$method = "PopSV"
+cnv.l = data.frame(method = "PopSV", set = "loose", res.df[, c("sample", "chr", 
+    "start", "end")])
+cnv.l = rbind(cnv.l, subset(others.df, sample %in% twins & set == "loose")[, 
+    c("method", "set", "sample", "chr", "start", "end")])
+## Sample information
+samp.info = files.df[, c("sample", "family", "ped")]
+cnv.s = merge(cnv.s, samp.info)
+cnv.l = merge(cnv.l, samp.info)
+
+concordance.twin <- function(cnv.df, cnv.2.df) {
+    ol.df = as.data.frame(findOverlaps(makeGRangesFromDataFrame(cnv.df, keep.extra.columns = TRUE), 
+        makeGRangesFromDataFrame(cnv.2.df, keep.extra.columns = TRUE)))
+    ol.df$samp.q = cnv.df$sample[ol.df$queryHits]
+    ol.df$samp.s = cnv.2.df$sample[ol.df$subjectHits]
+    ol.df$fam.q = cnv.df$family[ol.df$queryHits]
+    ol.df$fam.s = cnv.2.df$family[ol.df$subjectHits]
+    ol.s = ol.df %>% group_by(queryHits) %>% summarize(conc = any(fam.s == fam.q & 
+        samp.s != samp.q))
+    cnv.df$conc = FALSE
+    cnv.df$conc[subset(ol.s, conc)$queryHits] = TRUE
+    cnv.df
+}
+
+cnv.s = cnv.s %>% group_by(method) %>% do(concordance.twin(., subset(cnv.l, 
+    method == .$method[1]))) %>% ungroup %>% mutate(conc.null = as.logical(rbinom(n(), 
+    1, prop)))
+```
+
+``` r
+conc.tw = cnv.s %>% filter(prop < 0.5) %>% group_by(sample, method) %>% summarize(nb.c = sum(conc), 
+    prop.c = mean(conc), nb.c.null = sum(conc.null), prop.c.null = mean(conc.null)) %>% 
+    mutate(method = factor(as.character(method), levels = methods.f))
+ggplot(conc.tw, aes(x = method, y = prop.c)) + geom_boxplot(aes(fill = method)) + 
+    theme_bw() + xlab("") + ylab("proportion of replicated calls per sample") + 
+    ylim(0, 1) + coord_flip() + guides(fill = FALSE) + scale_fill_manual(values = cbPalette)
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-7-1.png)
+
+``` r
+ggplot(conc.tw, aes(x = method, y = nb.c - nb.c.null)) + geom_boxplot(aes(fill = method)) + 
+    theme_bw() + xlab("") + ylab("number of replicated calls per sample") + 
+    coord_flip() + guides(fill = FALSE) + scale_fill_manual(values = cbPalette)
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-7-2.png)
+
+Bias ?
+------
+
+Checking for potential bias when fragmented calls in one method versus stitched calls in another might duplicate the number of "calls" in the first method.
+
+Let's see how many calls in one method overlaps several calls in another method
+
+``` r
+event.duplication.check <- function(cnv.o, methods = c("PopSV", "FREEC")) {
+    gr1 = with(subset(cnv.o, method == methods[1]), GRanges(chr, IRanges(start, 
+        end)))
+    gr2 = with(subset(cnv.o, method == methods[2]), GRanges(chr, IRanges(start, 
+        end)))
+    ol = suppressWarnings(findOverlaps(gr1, gr2))
+    if (length(ol) == 0) 
+        return(data.frame(nb.ol = NA, count = NA, method = NA))
+    ol.1 = as.data.frame(table(table(queryHits(ol))))
+    ol.1$method = methods[1]
+    ol.2 = as.data.frame(table(table(subjectHits(ol))))
+    ol.2$method = methods[2]
+    ol.df = rbind(ol.1, ol.2)
+    colnames(ol.df)[1:2] = c("nb.ol", "count")
+    ol.df$nb.ol = as.integer(as.character(ol.df$nb.ol))
+    ol.df
+}
+dup.check = cnv.s %>% filter(prop < 0.5) %>% group_by(sample) %>% do({
+    other.meth = setdiff(unique(.$method), "PopSV")
+    tobind = lapply(other.meth, function(meth) {
+        data.frame(comp = paste0("PopSV-", meth), event.duplication.check(., 
+            methods = c("PopSV", meth)))
+    })
+    do.call(rbind, tobind)
+})
+dup.check = as.data.frame(dup.check)
+dup.check$method = factor(as.character(dup.check$method), levels = methods.f)
+```
+
+``` r
+ggplot(subset(dup.check, !is.na(nb.ol)), aes(x = winsorF(nb.ol, 3), y = count, 
+    fill = method, group = paste(method, winsorF(nb.ol, 3)))) + geom_boxplot() + 
+    theme_bw() + xlab("overlapping X calls from other method") + ylab("number of calls per sample") + 
+    facet_grid(comp ~ ., scales = "free") + theme(text = element_text(size = 18), 
+    legend.position = "top") + scale_fill_manual(values = cbPalette) + scale_x_continuous(breaks = 1:3, 
+    labels = c(1, 2, "3+")) + coord_flip()
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-9-1.png)

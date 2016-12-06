@@ -33,6 +33,7 @@ ol.df <- function(df, df2){
   df$ol.kb = 0
   df$ol.kb[as.numeric(names(cov.o))] = as.numeric(cov.o)
   df$ol.prop = 1e3 * df$ol.kb / (df$end-df$start+1)
+  df$ol.prop = ifelse(df$ol.prop>1, 1, df$ol.prop)
   nb.bin.cons2 = tapply(df2$nb.bin.cons[subjectHits(ol)], queryHits(ol), sum)
   df$nb.bin.cons.2 = 0
   df$nb.bin.cons.2[as.numeric(names(cov.o))] = as.numeric(nb.bin.cons2)

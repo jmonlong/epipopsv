@@ -8,4 +8,4 @@ zcat gencode.v19.annotation.gtf.gz | awk '{if($3=="gene"){print $0}}' | gzip > g
 zcat gencode.v19.annotation.gtf.gz | awk '{if($3=="exon"){print $0}}' | gzip > gencode.v19.annotation.exon.gtf.gz
 
 ## ExAC
-
+wget ftp://ftp.broadinstitute.org/pub/ExAC_release/release0.3.1/functional_gene_constraint/fordist_cleaned_exac_r03_march16_z_pli_rec_null_data.txt
