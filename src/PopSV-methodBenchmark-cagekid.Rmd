@@ -24,7 +24,10 @@ source("EpiPopSV-scripts.R")
 
 ## Get normal-tumor information
 load("../data/cagekid-5kbp-files.RData")
-normals = subset(files.df, status=="normal")$sample
+## Get 50 random samples. In paper all samples were used but needs more memory.
+normals = sample(subset(files.df, status=="normal")$sample,50)
+inds = subset(files.df, sample %in% normals)$individual
+tumors = subset(files.df, individual %in% inds & status=="tumor")$sample
 
 ## CNVs from PopSV, FREEC, CNVnator, cn.MOPS, LUMPY
 load("../data/cnvs-PopSV-cagekid-5kbp-FDR001.RData")
@@ -32,12 +35,12 @@ cnv.s = subset(res.df, sample %in% normals)
 rm(res.df)
 cnv.s = data.frame(method="PopSV", set="stringent", cnv.s[, c("sample","chr","start","end")])
 load("../data/cnvs-PopSV-cagekid-5kbp-FDR05.RData")
-cnv.l = subset(res.df, sample %in% normals)
+cnv.l = subset(res.df, sample %in% tumors)
 rm(res.df)
 cnv.l = data.frame(method="PopSV", set="loose", cnv.l[, c("sample","chr","start","end")])
 load("../data/cnvs-otherMethods-cagekid-5kbp.RData")
 cnv.s = rbind(cnv.s, subset(others.df, sample %in% normals & set=="stringent")[, c("method","set","sample","chr","start","end")])
-cnv.l = rbind(cnv.l, subset(others.df, !(sample %in% normals) & set=="loose")[,  c("method","set","sample","chr","start","end")])
+cnv.l = rbind(cnv.l, subset(others.df, sample %in% tumors & set=="loose")[,  c("method","set","sample","chr","start","end")])
 rm(others.df)
 
 ## Palette and method order
@@ -47,7 +50,7 @@ cnv.s$method = factor(as.character(cnv.s$method), levels=methods.f)
 cnv.l$method = factor(as.character(cnv.l$method), levels=methods.f)
 ```
 
-
+		
 ## Systematic calls ?
 
 How many systematic calls do we get in a typical sample ? 
@@ -56,11 +59,6 @@ The distribution shows the average proportion of calls in one sample, grouped by
 
 
 ```{r}
-res.l = list()
-cnv.s.lumpy = for(ch in unique(cnv.s$chr)){
-                message(ch)
-                res.l = c(res.l, list(freq.range(subset(cnv.s, chr==ch & method=="LUMPY"), annotate.only=TRUE)))
-              }
 cnv.s = cnv.s %>% group_by(method) %>% do(freq.range(., annotate.only=TRUE))
 cnv.ave.samp = cnv.s %>% mutate(prop=cut(prop, seq(0,1,.05), labels=seq(0.05,1,.05))) %>% group_by(method, sample, prop) %>% summarize(call=n()) %>% group_by(method, sample) %>% mutate(call=call/sum(call)) 
 cnv.ave.samp %>% group_by(method, prop) %>% summarize(call=mean(call)) %>% ggplot(aes(x=prop, y=call, fill=method)) + geom_bar(stat="identity") + facet_grid(method~., scales="free") + theme_bw() + scale_fill_manual(values=cbPalette) + guides(fill=FALSE) + xlab("frequency") + ylab("proportion of calls")
