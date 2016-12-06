@@ -2,7 +2,7 @@ This repository hosts the source code and instructions to reproduce the analysis
 
 If you just want the CNV calls, find them in the [FigShare repository](https://figshare.com/s/20dfdedcc4718e465185), or directly [here](https://ndownloader.figshare.com/files/6994223?private_link=20dfdedcc4718e465185).
 
-To review the code and resulting graphs/numbers, have a look at the R-markdown reports in the `reports` folder and scripts in the `src` folder.
+To review the code and resulting graphs/numbers, have a look at the R-markdown reports in the [`reports`](https://github.com/jmonlong/epipopsv/tree/master/reports) folder and scripts in the  [`src`](https://github.com/jmonlong/epipopsv/tree/master/src) folder.
 
 To rerun the analysis, follow these steps:
 
@@ -10,7 +10,7 @@ To rerun the analysis, follow these steps:
 
 The necessary data has been deposited on [FigShare](https://figshare.com/s/20dfdedcc4718e465185). Depending on the analysis, you might not need to download all the data.
 
-The easiest way to download all the data (1.5 GB) and unzip it in the `data` folder.
+Still, the easiest way is to download all the data (1.5 GB) and unzip it in the `data` folder.
 
 Soon, we will prepare different packs that will be downloadable with:
 
