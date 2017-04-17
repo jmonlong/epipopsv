@@ -72,13 +72,13 @@ ggfamily <- function(hc.o) {
     dd <- dendro_data(hc.o)
     l.df = dd$labels
     l.df = cbind(l.df, ped[as.character(l.df$label), ])
+    l.df %<>% mutate(family = ifelse(is.na(family), "other", family), ped2 = ifelse(is.na(ped2), 
+        "other", ped2))
     ggplot(dd$segments) + geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
         geom_point(aes(x = x, y = y, colour = factor(family), shape = factor(ped2)), 
             size = 5, data = l.df) + scale_colour_hue(name = "family") + scale_shape_manual(name = "", 
         values = c(15, 16, 18, 17, 17)) + theme_minimal() + theme(plot.background = element_rect(colour = "white"), 
-        legend.position = "bottom") + scale_x_discrete(labels = l.df$samp.short, 
-        expand = 0.01) + xlab("sample") + ylab("") + theme(axis.text.x = element_text(angle = 90, 
-        hjust = 1))
+        legend.position = "bottom") + xlab("sample") + ylab("")
 }
 cluster.cnv <- function(cnv.df, cl.method = "complete") {
     samples = unique(cnv.df$sample)
@@ -202,7 +202,7 @@ Replication in the second twin
 
 ``` r
 twins = subset(files.df, grepl("Twin", ped))$sample
-cnv.s = subset(res.df, sample %in% twins)
+cnv.s = res.df %>% filter(prop < 0.5, sample %in% twins)
 load("../data/cnvs-PopSV-twin-5kbp-FDR05.RData")
 res.df = subset(res.df, sample %in% twins)
 res.df$method = "PopSV"
@@ -235,7 +235,7 @@ cnv.s = cnv.s %>% group_by(method) %>% do(concordance.twin(., subset(cnv.l,
 ```
 
 ``` r
-conc.tw = cnv.s %>% filter(prop < 0.5) %>% group_by(sample, method) %>% summarize(nb.c = sum(conc), 
+conc.tw = cnv.s %>% group_by(sample, method) %>% summarize(nb.c = sum(conc), 
     prop.c = mean(conc), nb.c.null = sum(conc.null), prop.c.null = mean(conc.null)) %>% 
     mutate(method = factor(as.character(method), levels = methods.f))
 ggplot(conc.tw, aes(x = method, y = prop.c)) + geom_boxplot(aes(fill = method)) + 
@@ -278,7 +278,7 @@ event.duplication.check <- function(cnv.o, methods = c("PopSV", "FREEC")) {
     ol.df$nb.ol = as.integer(as.character(ol.df$nb.ol))
     ol.df
 }
-dup.check = cnv.s %>% filter(prop < 0.5) %>% group_by(sample) %>% do({
+dup.check = cnv.s %>% group_by(sample) %>% do({
     other.meth = setdiff(unique(.$method), "PopSV")
     tobind = lapply(other.meth, function(meth) {
         data.frame(comp = paste0("PopSV-", meth), event.duplication.check(., 
@@ -294,9 +294,9 @@ dup.check$method = factor(as.character(dup.check$method), levels = methods.f)
 ggplot(subset(dup.check, !is.na(nb.ol)), aes(x = winsorF(nb.ol, 3), y = count, 
     fill = method, group = paste(method, winsorF(nb.ol, 3)))) + geom_boxplot() + 
     theme_bw() + xlab("overlapping X calls from other method") + ylab("number of calls per sample") + 
-    facet_grid(comp ~ ., scales = "free") + theme(text = element_text(size = 18), 
-    legend.position = "top") + scale_fill_manual(values = cbPalette) + scale_x_continuous(breaks = 1:3, 
-    labels = c(1, 2, "3+")) + coord_flip()
+    facet_wrap(~comp, scales = "free") + theme(text = element_text(size = 18)) + 
+    scale_fill_manual(values = cbPalette) + scale_x_continuous(breaks = 1:3, 
+    labels = c(1, 2, "3+"))
 ```
 
 ![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-9-1.png)

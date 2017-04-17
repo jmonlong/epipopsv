@@ -1,4 +1,4 @@
-* * * * *
+---
 title: PopSV - Methods benchmark using the Twin dataset
 author: Jean Monlong
 output:
@@ -48,14 +48,14 @@ res.df$method = factor(as.character(res.df$method), levels=methods.f)
 
 ## Systematic calls ?
 
-How many systematic calls do we get in a typical sample ? 
+How many systematic calls do we get in a typical sample ?
 
 The distribution shows the average proportion of calls in one sample, grouped by their frequency in the full cohort.
 
 
 ```{r}
 res.df = res.df %>% group_by(method) %>% do(freq.range(., annotate.only=TRUE))
-res.ave.samp = res.df %>% mutate(prop=cut(prop, seq(0,1,.05), labels=seq(0.05,1,.05))) %>% group_by(method, sample, prop) %>% summarize(call=n()) %>% group_by(method, sample) %>% mutate(call=call/sum(call)) 
+res.ave.samp = res.df %>% mutate(prop=cut(prop, seq(0,1,.05), labels=seq(0.05,1,.05))) %>% group_by(method, sample, prop) %>% summarize(call=n()) %>% group_by(method, sample) %>% mutate(call=call/sum(call))
 res.ave.samp %>% group_by(method, prop) %>% summarize(call=mean(call)) %>% ggplot(aes(x=prop, y=call, fill=method)) + geom_bar(stat="identity") + facet_grid(method~., scales="free") + theme_bw() + scale_fill_manual(values=cbPalette) + guides(fill=FALSE) + xlab("frequency") + ylab("proportion of calls")
 res.ave.samp %>% filter(prop=="1") %>% ggplot(aes(x=method, y=call, fill=method)) + geom_boxplot() + theme_bw() + coord_flip() + scale_fill_manual(values=cbPalette) + guides(fill=FALSE) + ylim(0,1) + ylab("proportion of systematic calls (>95% of the cohort)")
 ```
@@ -68,7 +68,8 @@ ggfamily <- function(hc.o){
   dd <- dendro_data(hc.o)
   l.df = dd$labels
   l.df = cbind(l.df, ped[as.character(l.df$label),])
-  ggplot(dd$segments) + geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + geom_point(aes(x=x, y=y, colour=factor(family), shape=factor(ped2)),size=5,data=l.df) + scale_colour_hue(name="family") + scale_shape_manual(name="",values=c(15,16,18,17,17)) + theme_minimal() + theme(plot.background=element_rect(colour="white"), legend.position="bottom") + scale_x_discrete(labels=l.df$samp.short, expand=.01) + xlab("sample") + ylab("") + theme(axis.text.x = element_text(angle = 90,hjust = 1))
+  l.df %<>% mutate(family=ifelse(is.na(family), "other", family), ped2=ifelse(is.na(ped2), "other", ped2))
+  ggplot(dd$segments) + geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + geom_point(aes(x=x, y=y, colour=factor(family), shape=factor(ped2)),size=5,data=l.df)+ scale_colour_hue(name="family") + scale_shape_manual(name="",values=c(15,16,18,17,17)) + theme_minimal() + theme(plot.background=element_rect(colour="white"), legend.position="bottom") + xlab("sample") + ylab("")
 }
 cluster.cnv <- function(cnv.df,cl.method="complete"){
   samples = unique(cnv.df$sample)
@@ -142,12 +143,11 @@ ggplot(ri.df, aes(x=nb.cut, y=rand.ind, colour=method)) + geom_point(aes(shape=c
 lapply(res.l, function(l)l$dendro)
 ```
 
-
 ## Replication in the second twin
 
-```{r, cache=TRUE}
+```{r}
 twins = subset(files.df, grepl("Twin", ped))$sample
-cnv.s = subset(res.df, sample %in% twins)
+cnv.s = res.df %>% filter(prop<.5, sample %in% twins)
 load("../data/cnvs-PopSV-twin-5kbp-FDR05.RData")
 res.df = subset(res.df, sample %in% twins)
 res.df$method = "PopSV"
@@ -175,7 +175,7 @@ cnv.s = cnv.s %>% group_by(method) %>% do(concordance.twin(., subset(cnv.l, meth
 
 
 ```{r}
-conc.tw = cnv.s %>% filter(prop<.5) %>% group_by(sample, method) %>% summarize(nb.c=sum(conc), prop.c=mean(conc), nb.c.null=sum(conc.null), prop.c.null=mean(conc.null)) %>% mutate(method = factor(as.character(method), levels=methods.f))
+conc.tw = cnv.s %>% group_by(sample, method) %>% summarize(nb.c=sum(conc), prop.c=mean(conc), nb.c.null=sum(conc.null), prop.c.null=mean(conc.null)) %>% mutate(method = factor(as.character(method), levels=methods.f))
 ggplot(conc.tw,aes(x=method,y=prop.c)) + geom_boxplot(aes(fill=method)) + theme_bw() + xlab("")  + ylab("proportion of replicated calls per sample") + ylim(0,1) + coord_flip() + guides(fill=FALSE) + scale_fill_manual(values=cbPalette)
 ggplot(conc.tw,aes(x=method,y=nb.c-nb.c.null)) + geom_boxplot(aes(fill=method)) + theme_bw() + xlab("")  + ylab("number of replicated calls per sample") + coord_flip() + guides(fill=FALSE) + scale_fill_manual(values=cbPalette)
 ```
@@ -187,7 +187,7 @@ Checking for potential bias when fragmented calls in one method versus stitched 
 
 Let's see how many calls in one method overlaps several calls in another method
 
-```{r, cache=TRUE}
+```{r}
 event.duplication.check <- function(cnv.o, methods=c("PopSV","FREEC")){
   gr1 = with(subset(cnv.o, method==methods[1]), GRanges(chr, IRanges(start, end)))
   gr2 = with(subset(cnv.o, method==methods[2]), GRanges(chr, IRanges(start, end)))
@@ -202,17 +202,17 @@ event.duplication.check <- function(cnv.o, methods=c("PopSV","FREEC")){
   ol.df$nb.ol = as.integer(as.character(ol.df$nb.ol))
   ol.df
 }
-dup.check = cnv.s %>% filter(prop<.5) %>% group_by(sample) %>% do({
+dup.check = cnv.s %>% group_by(sample) %>% do({
   other.meth = setdiff(unique(.$method), "PopSV")
   tobind = lapply(other.meth, function(meth){
     data.frame(comp=paste0("PopSV-",meth), event.duplication.check(., methods=c("PopSV",meth)))
   })
-  do.call(rbind, tobind)        
+  do.call(rbind, tobind)
 })
 dup.check = as.data.frame(dup.check)
 dup.check$method = factor(as.character(dup.check$method), levels=methods.f)
 ```
 
-```{r}
-ggplot(subset(dup.check, !is.na(nb.ol)), aes(x=winsorF(nb.ol,3), y=count, fill=method, group=paste(method,winsorF(nb.ol,3)))) + geom_boxplot()  + theme_bw() + xlab("overlapping X calls from other method") + ylab("number of calls per sample") + facet_grid(comp~., scales="free") + theme(text=element_text(size=18), legend.position="top") + scale_fill_manual(values=cbPalette) + scale_x_continuous(breaks=1:3, labels=c(1,2,"3+")) + coord_flip()
+```{r, fig.height=8}
+ggplot(subset(dup.check, !is.na(nb.ol)), aes(x=winsorF(nb.ol,3), y=count, fill=method, group=paste(method,winsorF(nb.ol,3)))) + geom_boxplot()  + theme_bw() + xlab("overlapping X calls from other method") + ylab("number of calls per sample") + facet_wrap(~comp, scales="free") + theme(text=element_text(size=18)) + scale_fill_manual(values=cbPalette) + scale_x_continuous(breaks=1:3, labels=c(1,2,"3+"))
 ```

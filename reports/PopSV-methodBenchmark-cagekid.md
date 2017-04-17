@@ -1,5 +1,7 @@
-PopSV - Methods benchmark using the Twin dataset
-================================================
+PopSV - Methods benchmark using the CageKid dataset
+===================================================
+
+The [CageKid consortium](https://www.cng.fr/cagekid/) provides WGS for normal/tumor pairs of clear-cell renal carcinoma. Here we use the germline calls to evaluate the performance of the different CNV detection methods. For the vast majority of CNVs, we expect a germline variant to be present in the tumor.
 
 Load packages, functions and data
 ---------------------------------
@@ -30,7 +32,6 @@ rm(res.df)
 cnv.l = data.frame(method = "PopSV", set = "loose", cnv.l[, c("sample", "chr", 
     "start", "end")])
 load("../data/cnvs-otherMethods-cagekid-5kbp.RData")
-others.df = subset(others.df, method != "LUMPY")
 cnv.s = rbind(cnv.s, subset(others.df, sample %in% normals & set == "stringent")[, 
     c("method", "set", "sample", "chr", "start", "end")])
 cnv.l = rbind(cnv.l, subset(others.df, sample %in% tumors & set == "loose")[, 
@@ -44,8 +45,6 @@ methods.f = c("LUMPY", "CNVnator", "cn.MOPS", "FREEC", "PopSV")
 cnv.s$method = factor(as.character(cnv.s$method), levels = methods.f)
 cnv.l$method = factor(as.character(cnv.l$method), levels = methods.f)
 ```
-
-Note: LUMPY calls are not included here (yet), because of memory problems during the frequency annotation. For the paper, we used high memory node on a computing cluster to include these calls.
 
 Systematic calls ?
 ------------------
@@ -80,30 +79,28 @@ Replication in the paired tumor
 
 ``` r
 samp.info = files.df[, c("sample", "individual")]
+cnv.s %<>% filter(prop < 0.5)
 cnv.s = merge(cnv.s, samp.info)
 cnv.l = merge(cnv.l, samp.info)
 
 concordance.nt <- function(cnv.df, cnv.2.df) {
-    cnv.df = subset(cnv.df, individual %in% unique(cnv.2.df$individual))
-    ol.df = as.data.frame(findOverlaps(makeGRangesFromDataFrame(cnv.df, keep.extra.columns = TRUE), 
-        makeGRangesFromDataFrame(cnv.2.df, keep.extra.columns = TRUE)))
-    ol.df$ind.q = cnv.df$individual[ol.df$queryHits]
-    ol.df$ind.s = cnv.2.df$individual[ol.df$subjectHits]
-    ol.s = ol.df %>% group_by(queryHits) %>% summarize(conc = any(ind.s == ind.q))
-    cnv.df$conc = FALSE
-    cnv.df$conc[subset(ol.s, conc)$queryHits] = TRUE
+    cnv.df$conc = overlapsAny(makeGRangesFromDataFrame(cnv.df), makeGRangesFromDataFrame(cnv.2.df))
     cnv.df
 }
 
-cnv.s = cnv.s %>% group_by(method) %>% do(concordance.nt(., subset(cnv.l, method == 
-    .$method[1]))) %>% ungroup %>% mutate(conc.null = as.logical(rbinom(n(), 
-    1, prop)))
+cnv.s = cnv.s %>% group_by(method) %>% do({
+    subset(., individual %in% unique(subset(cnv.l, method == .$method[1])$individual))
+})
+cnv.s = cnv.s %>% group_by(method, individual) %>% do(concordance.nt(., subset(cnv.l, 
+    method == .$method[1] & individual == .$individual[1]))) %>% ungroup %>% 
+    mutate(conc.null = as.logical(rbinom(n(), 1, prop)))
 ```
 
 ``` r
-conc.nt = cnv.s %>% filter(prop < 0.5) %>% group_by(sample, method) %>% summarize(nb.c = sum(conc), 
+conc.nt = cnv.s %>% group_by(sample, method) %>% summarize(nb.c = sum(conc), 
     prop.c = mean(conc), nb.c.null = sum(conc.null), prop.c.null = mean(conc.null)) %>% 
-    mutate(method = factor(as.character(method), levels = methods.f))
+    mutate(method = factor(as.character(method), levels = methods.f)) %>% group_by(method) %>% 
+    mutate(nb.c.n = winsorF(nb.c - nb.c.null, med.u = 2))
 ggplot(conc.nt, aes(x = method, y = prop.c)) + geom_boxplot(aes(fill = method)) + 
     theme_bw() + xlab("") + ylab("proportion of replicated calls per sample") + 
     ylim(0, 1) + coord_flip() + guides(fill = FALSE) + scale_fill_manual(values = cbPalette)
@@ -112,7 +109,7 @@ ggplot(conc.nt, aes(x = method, y = prop.c)) + geom_boxplot(aes(fill = method)) 
 ![](PopSV-methodBenchmark-cagekid_files/figure-markdown_github/unnamed-chunk-4-1.png)
 
 ``` r
-ggplot(conc.nt, aes(x = method, y = nb.c - nb.c.null)) + geom_boxplot(aes(fill = method)) + 
+ggplot(conc.nt, aes(x = method, y = nb.c.n)) + geom_boxplot(aes(fill = method)) + 
     theme_bw() + xlab("") + ylab("number of replicated calls per sample") + 
     coord_flip() + guides(fill = FALSE) + scale_fill_manual(values = cbPalette)
 ```
@@ -144,7 +141,7 @@ event.duplication.check <- function(cnv.o, methods = c("PopSV", "FREEC")) {
     ol.df$nb.ol = as.integer(as.character(ol.df$nb.ol))
     ol.df
 }
-dup.check = cnv.s %>% filter(prop < 0.5) %>% group_by(sample) %>% do({
+dup.check = cnv.s %>% group_by(sample) %>% do({
     other.meth = setdiff(unique(.$method), "PopSV")
     tobind = lapply(other.meth, function(meth) {
         data.frame(comp = paste0("PopSV-", meth), event.duplication.check(., 
@@ -160,9 +157,9 @@ dup.check$method = factor(as.character(dup.check$method), levels = methods.f)
 ggplot(subset(dup.check, !is.na(nb.ol)), aes(x = winsorF(nb.ol, 3), y = count, 
     fill = method, group = paste(method, winsorF(nb.ol, 3)))) + geom_boxplot() + 
     theme_bw() + xlab("overlapping X calls from other method") + ylab("number of calls per sample") + 
-    facet_grid(comp ~ ., scales = "free") + theme(text = element_text(size = 18), 
-    legend.position = "top") + scale_fill_manual(values = cbPalette) + scale_x_continuous(breaks = 1:3, 
-    labels = c(1, 2, "3+")) + coord_flip()
+    facet_wrap(~comp, scales = "free") + theme(text = element_text(size = 18)) + 
+    scale_fill_manual(values = cbPalette) + scale_x_continuous(breaks = 1:3, 
+    labels = c(1, 2, "3+"))
 ```
 
 ![](PopSV-methodBenchmark-cagekid_files/figure-markdown_github/unnamed-chunk-6-1.png)

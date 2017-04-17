@@ -8,6 +8,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, fig.width=10, tidy=TRUE)
+set.seed(666)
 ```
 
 # CNV enrichment patterns in epilepsy
@@ -54,6 +55,7 @@ cnv.all = read.table("../data/cnvs-PopSV-Epilepsy-198affected-301controls-5kb.ts
 cnv.all = cnv.all %>% mutate(project=ifelse(project=="affected", "patients", "controls"))
 cnv.all.gr = makeGRangesFromDataFrame(cnv.all, keep.extra.columns=TRUE)
 cnv.all$prop.db = dbProp(cnv.all.gr, svs.gr)
+cnv.all$prop.db.50 = cnv.all.gr %>% dbProp(., svs.gr, min.db.span=.5) # 50% overlap
 cnv.all$exon = overlapsAny(cnv.all.gr, exons.grl$exon)
 epi.gr = reduce(subset(cnv.all.gr, project=="patients"))
 cnv.all$exon.epi = overlapsAny(cnv.all.gr, exons.grl$exon.epi)
@@ -64,6 +66,7 @@ cnv.all$exon.epi.d[epid$queryHits] = epid$distance
 cnv.all$exon.epi.closest = NA
 cnv.all$exon.epi.closest[epid$queryHits] = exons.grl$exon.epi$geneName[epid$subjectHits]
 cnv.all %<>% group_by(project) %>% do(freq.range(., annotate.only = TRUE)) %>% ungroup
+info.df = cnv.all %>% select(sample, project) %>% unique
 ```
 
 Also let's choose how many cores we want to use:
@@ -74,13 +77,14 @@ NB.CORES = 3
 
 ## Exonic enrichment
 
-### Sub-sampling and permutation
+### Preliminary analysis: Large CNVs enriched in exons in patients
 
-NOTE: This is 20 times less sub-sampling and permutations than in the paper, hence the signal might not be as clean. It might take more time but feel free to increase `NB.SUBSAMP` and `NB.PERMS`.
+We first recover the previously described enrichment of large-rare exonic CNVs in patients compared to controls.
 
-```{r, cache=TRUE}
+```{r}
 permF <-  function(rr, cnv.df, feat.grl){
-    cat.all = cnv.df %>% group_by(project) %>% filter(sample %in% sample(unique(sample), 150,TRUE)) %>% do(reduceDf(.)) %>% mutate(sample=project, control=FALSE) %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE)
+    info.df %<>% group_by(project) %>% filter(sample %in% sample(unique(sample), 150))
+    cat.all = cnv.df %>% filter(sample %in% info.df$sample) %>% group_by(project) %>% do(reduceDf(.)) %>% mutate(sample=project, control=FALSE) %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE)
     cat.null = draw.controls(cat.all, list(centel=gen.feat.l$centel), nb.cores=1)
     cat.null$project = cat.null$sample
     cat.null$sample = cat.all$sample = NULL
@@ -95,10 +99,27 @@ permF <-  function(rr, cnv.df, feat.grl){
     do.call(rbind, res)
 }
 
-NB.SUBSAMP = 100
-NB.PERMS = 20
 exons.all.pli = exons.grl
 exons.all.pli$exon.epi = NULL
+enr.large.all = do.call(rbind, mclapply(1:100, permF, cnv.df=subset(cnv.all, end-start>5e4), feat.grl=exons.all.pli, mc.cores=NB.CORES))
+enr.large.rare = do.call(rbind, mclapply(1:100, permF, cnv.df=subset(cnv.all, end-start>5e4 & prop.db.50<.01), feat.grl=exons.all.pli, mc.cores=NB.CORES))
+enr.large.all.ss = enr.large.all %>% filter(set=="obs") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="all CNVs")
+enr.large.rare.ss = enr.large.rare %>% filter(set=="obs") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="rare CNVs")
+enr.large.s = rbind(enr.large.all.ss, enr.large.rare.ss)
+
+ggplot(enr.large.s, aes(x=feat, fill=project, y=winsorF(enr,2))) + geom_boxplot(notch=TRUE) + theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(.~set) + geom_hline(yintercept=1, linetype=2) + scale_fill_brewer(name="",palette="Set1")
+```
+
+
+### Sub-sampling and permutation
+
+Now using all the calls (mostly small CNVs), do we see the same exonic enrichment ?
+
+NOTE: This is 20 times less sub-sampling and permutations than in the paper, hence the signal might not be as clean. It might take more time but feel free to increase `NB.SUBSAMP` and `NB.PERMS`.
+
+```{r, cache=TRUE}
+NB.SUBSAMP = 100
+NB.PERMS = 20
 enr.all = do.call(rbind, mclapply(1:(NB.SUBSAMP*NB.PERMS), permF, cnv.df=cnv.all, feat.grl=exons.all.pli, mc.cores=NB.CORES))
 enr.rare = do.call(rbind, mclapply(1:(NB.SUBSAMP*NB.PERMS), permF, cnv.df=subset(cnv.all, prop.db<.01), feat.grl=exons.all.pli, mc.cores=NB.CORES))
 ```
@@ -110,7 +131,7 @@ enr.all.ss = enr.all %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, 
 enr.rare.ss = enr.rare %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="rare CNVs")
 enr.s = rbind(enr.all.ss, enr.rare.ss)
 
-ggplot(enr.s, aes(x=feat, fill=project, y=enr)) + geom_boxplot() + theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(.~set) + geom_hline(yintercept=1, linetype=2)
+ggplot(enr.s, aes(x=feat, fill=project, y=enr)) + geom_boxplot() + theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(.~set) + geom_hline(yintercept=1, linetype=2) + scale_fill_brewer(name="",palette="Set1")
 ```
 
 ### Permutation test
@@ -221,7 +242,7 @@ cnv.ss = cnv.all %>% group_by(project) %>% do(freqEpiRareSS(., nb.rep=100))
 
 ```{r}
 cnb.nc = cnv.ss %>% filter(prop.db<.01, nb<10, !exon) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))
-ggplot(subset(cnb.nc, d<5e4), aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.nc, d<5e4 & project=="controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples")
+ggplot(subset(cnb.nc, d<5e4), aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.nc, d<5e4 & project=="controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1")
 ```
 
 ### Rare non-coding CNVs that overlaps functional annotations
@@ -230,10 +251,10 @@ Focusing on CNVs that overlaps an eQTL for the epilepsy gene, or a DNase I hyper
 
 ```{r}
 cnb.df = cnv.ss %>% filter(prop.db<.01, nb<10, !exon, enhancer.epi) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))
-ggplot(cnb.df, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.df, project=="controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples")
+ggplot(cnb.df, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.df, project=="controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1")
 
 cnb.rec = cnv.ss %>% filter(prop.db<.01, nb>1, nb<10, !exon, enhancer.epi) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))
-ggplot(cnb.rec, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.rec, project=="controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + ggtitle("Non-private")
+ggplot(cnb.rec, aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2, data=subset(cnb.rec, project=="controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + ggtitle("Non-private") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1")
 ```
 
 
@@ -335,5 +356,5 @@ enr.epi.freq = do.call(rbind, enr.epi.freq)
 ```
 
 ```{r}
-ggplot(enr.epi.freq, aes(x=factor(freq), y=odds.ratio, colour=project, group=project)) + geom_line() + geom_point(aes(size=cut(pv, c(0,.05,1)))) + theme_bw() + ylim(0, max(enr.epi.freq$odds.ratio)) + scale_colour_hue() + geom_hline(yintercept=1, linetype=3) + scale_size_manual(name="P-value", labels=c("<0.05",">0.05"), values=c(4,2)) + xlab("CNV frequency in public databases") + facet_grid(type~.) + ylab("fold-enrichment")
+ggplot(enr.epi.freq, aes(x=factor(freq), y=odds.ratio, colour=project, group=project)) + geom_line() + geom_point(aes(size=cut(pv, c(0,.05,1)))) + theme_bw() + ylim(0, max(enr.epi.freq$odds.ratio)) + scale_colour_hue() + geom_hline(yintercept=1, linetype=3) + scale_size_manual(name="P-value", labels=c("<0.05",">0.05"), values=c(4,2)) + xlab("CNV frequency in public databases") + facet_grid(type~.) + ylab("fold-enrichment") + scale_colour_brewer(name="",palette="Set1")
 ```

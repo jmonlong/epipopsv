@@ -2,17 +2,25 @@
 ## Used for the epilepsy analysis
 ##
 
-winsorF <- function(x, u=NULL, l=NULL){
-    if(is.null(u)) u = min(median(x, na.rm=TRUE)*3, quantile(x, .95, na.rm=TRUE))
-    if(any(x>u)) x[x>u] = u
-    if(any(x<l)) x[x<l] = l
-    x
+winsorF <- function(x, u=NULL, l=NULL, med.u=NULL){
+  x = as.numeric(x)
+  if(is.null(u) & !is.null(med.u)){
+    u = median(x, na.rm=TRUE)*med.u
+  }
+  if(!is.null(u) & any(x>u, na.rm=TRUE)){
+    x[which(x>u)] = u
+  }
+  if(!is.null(l) & any(x<l, na.rm=TRUE)){
+    x[which(x<l)] = l
+  }
+  return(x)
 }
 dbProp <- function(gr, db.gr, min.db.span=0){
     ol = findOverlaps(gr, db.gr)
     prop = rep(0,length(gr))
     ol.span = width(pintersect(gr[queryHits(ol)], db.gr[subjectHits(ol)]))/width(db.gr)[subjectHits(ol)]
-    ol.span.ii = which(ol.span>min.db.span)
+    ol.span2 = width(pintersect(gr[queryHits(ol)], db.gr[subjectHits(ol)]))/width(gr)[queryHits(ol)]
+    ol.span.ii = which(ol.span>min.db.span & ol.span2>min.db.span)
     ol.t = tapply(db.gr$prop[subjectHits(ol)[ol.span.ii]], queryHits(ol)[ol.span.ii], max)
     prop[as.numeric(names(ol.t))] = as.numeric(ol.t)
     prop

@@ -47,6 +47,7 @@ cnv.all = cnv.all %>% mutate(project = ifelse(project == "affected", "patients",
     "controls"))
 cnv.all.gr = makeGRangesFromDataFrame(cnv.all, keep.extra.columns = TRUE)
 cnv.all$prop.db = dbProp(cnv.all.gr, svs.gr)
+cnv.all$prop.db.50 = cnv.all.gr %>% dbProp(., svs.gr, min.db.span = 0.5)  # 50% overlap
 cnv.all$exon = overlapsAny(cnv.all.gr, exons.grl$exon)
 epi.gr = reduce(subset(cnv.all.gr, project == "patients"))
 cnv.all$exon.epi = overlapsAny(cnv.all.gr, exons.grl$exon.epi)
@@ -59,6 +60,7 @@ cnv.all$exon.epi.closest = NA
 cnv.all$exon.epi.closest[epid$queryHits] = exons.grl$exon.epi$geneName[epid$subjectHits]
 cnv.all %<>% group_by(project) %>% do(freq.range(., annotate.only = TRUE)) %>% 
     ungroup
+info.df = cnv.all %>% select(sample, project) %>% unique
 ```
 
 Also let's choose how many cores we want to use:
@@ -70,15 +72,16 @@ NB.CORES = 3
 Exonic enrichment
 -----------------
 
-### Sub-sampling and permutation
+### Preliminary analysis: Large CNVs enriched in exons in patients
 
-NOTE: This is 20 times less sub-sampling and permutations than in the paper, hence the signal might not be as clean. It might take more time but feel free to increase `NB.SUBSAMP` and `NB.PERMS`.
+We first recover the previously described enrichment of large-rare exonic CNVs in patients compared to controls.
 
 ``` r
 permF <- function(rr, cnv.df, feat.grl) {
-    cat.all = cnv.df %>% group_by(project) %>% filter(sample %in% sample(unique(sample), 
-        150, TRUE)) %>% do(reduceDf(.)) %>% mutate(sample = project, control = FALSE) %>% 
-        makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+    info.df %<>% group_by(project) %>% filter(sample %in% sample(unique(sample), 
+        150))
+    cat.all = cnv.df %>% filter(sample %in% info.df$sample) %>% group_by(project) %>% 
+        do(reduceDf(.)) %>% mutate(sample = project, control = FALSE) %>% makeGRangesFromDataFrame(keep.extra.columns = TRUE)
     cat.null = draw.controls(cat.all, list(centel = gen.feat.l$centel), nb.cores = 1)
     cat.null$project = cat.null$sample
     cat.null$sample = cat.all$sample = NULL
@@ -98,10 +101,36 @@ permF <- function(rr, cnv.df, feat.grl) {
     do.call(rbind, res)
 }
 
-NB.SUBSAMP = 100
-NB.PERMS = 20
 exons.all.pli = exons.grl
 exons.all.pli$exon.epi = NULL
+enr.large.all = do.call(rbind, mclapply(1:100, permF, cnv.df = subset(cnv.all, 
+    end - start > 50000), feat.grl = exons.all.pli, mc.cores = NB.CORES))
+enr.large.rare = do.call(rbind, mclapply(1:100, permF, cnv.df = subset(cnv.all, 
+    end - start > 50000 & prop.db.50 < 0.01), feat.grl = exons.all.pli, mc.cores = NB.CORES))
+enr.large.all.ss = enr.large.all %>% filter(set == "obs") %>% group_by(feat, 
+    project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% mutate(set = "all CNVs")
+enr.large.rare.ss = enr.large.rare %>% filter(set == "obs") %>% group_by(feat, 
+    project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% mutate(set = "rare CNVs")
+enr.large.s = rbind(enr.large.all.ss, enr.large.rare.ss)
+
+ggplot(enr.large.s, aes(x = feat, fill = project, y = winsorF(enr, 2))) + geom_boxplot(notch = TRUE) + 
+    theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks = c("exon", 
+    "exon.pli"), labels = c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(. ~ 
+    set) + geom_hline(yintercept = 1, linetype = 2) + scale_fill_brewer(name = "", 
+    palette = "Set1")
+```
+
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-3-1.png)
+
+### Sub-sampling and permutation
+
+Now using all the calls (mostly small CNVs), do we see the same exonic enrichment ?
+
+NOTE: This is 20 times less sub-sampling and permutations than in the paper, hence the signal might not be as clean. It might take more time but feel free to increase `NB.SUBSAMP` and `NB.PERMS`.
+
+``` r
+NB.SUBSAMP = 100
+NB.PERMS = 20
 enr.all = do.call(rbind, mclapply(1:(NB.SUBSAMP * NB.PERMS), permF, cnv.df = cnv.all, 
     feat.grl = exons.all.pli, mc.cores = NB.CORES))
 enr.rare = do.call(rbind, mclapply(1:(NB.SUBSAMP * NB.PERMS), permF, cnv.df = subset(cnv.all, 
@@ -120,10 +149,11 @@ enr.s = rbind(enr.all.ss, enr.rare.ss)
 ggplot(enr.s, aes(x = feat, fill = project, y = enr)) + geom_boxplot() + theme_bw() + 
     xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks = c("exon", 
     "exon.pli"), labels = c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(. ~ 
-    set) + geom_hline(yintercept = 1, linetype = 2)
+    set) + geom_hline(yintercept = 1, linetype = 2) + scale_fill_brewer(name = "", 
+    palette = "Set1")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-4-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-5-1.png)
 
 ### Permutation test
 
@@ -186,7 +216,7 @@ enr.all %>% filter(set == "exp") %>% group_by(feat, project, rep) %>% summarize(
 | feat     |        pv|
 |:---------|---------:|
 | exon     |  1.000000|
-| exon.pli |  0.004995|
+| exon.pli |  0.000999|
 
 ``` r
 enr.rare %>% filter(set == "exp") %>% group_by(feat, project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% 
@@ -199,7 +229,7 @@ enr.rare %>% filter(set == "exp") %>% group_by(feat, project, rep) %>% summarize
 
 | feat     |        pv|
 |:---------|---------:|
-| exon     |  0.005994|
+| exon     |  0.002997|
 | exon.pli |  0.000999|
 
 Rare exonic CNVs are less private in the epilepsy cohort
@@ -221,7 +251,7 @@ rare.ex.f %>% group_by(project, nb, rep) %>% summarize(n = n()/nb[1]) %>% group_
     labels = paste0(c(2:10), "+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-7-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-8-1.png)
 
 ### Same after exteme samples removal
 
@@ -246,7 +276,7 @@ rare.ex.f.noext %>% group_by(project, nb, rep) %>% summarize(n = n()/nb[1]) %>%
     ggtitle("Top 20 most extreme samples removed")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-8-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-9-1.png)
 
 ### French-Canadians only
 
@@ -269,7 +299,7 @@ rare.ex.fc %>% group_by(project, nb, rep) %>% summarize(n = n()/nb[1]) %>% group
     ggtitle("French-Canadians only")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-9-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-10-1.png)
 
 ### Permutation test
 
@@ -313,8 +343,8 @@ kable(priv.test)
 | test                           |        pv|
 |:-------------------------------|---------:|
 | all samples                    |  0.000999|
-| top 20 extreme samples removed |  0.005994|
-| french-canadian                |  0.003996|
+| top 20 extreme samples removed |  0.002997|
+| french-canadian                |  0.002997|
 
 Non-coding rare CNVs
 --------------------
@@ -348,10 +378,11 @@ ggplot(subset(cnb.nc, d < 50000), aes(x = d/1000, y = cnb, colour = project,
     fill = project)) + geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, 
     ymin = cnb.5), alpha = 0.2, linetype = 2, data = subset(cnb.nc, d < 50000 & 
     project == "controls")) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
-    ylab("cumulative affected samples")
+    ylab("cumulative affected samples") + scale_fill_brewer(name = "", palette = "Set1") + 
+    scale_colour_brewer(name = "", palette = "Set1")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-13-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-14-1.png)
 
 ### Rare non-coding CNVs that overlaps functional annotations
 
@@ -365,10 +396,12 @@ cnb.df = cnv.ss %>% filter(prop.db < 0.01, nb < 10, !exon, enhancer.epi) %>%
 ggplot(cnb.df, aes(x = d/1000, y = cnb, colour = project, fill = project)) + 
     geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, ymin = cnb.5), alpha = 0.2, 
     linetype = 2, data = subset(cnb.df, project == "controls")) + theme_bw() + 
-    xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples")
+    xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + 
+    scale_fill_brewer(name = "", palette = "Set1") + scale_colour_brewer(name = "", 
+    palette = "Set1")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-14-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-15-1.png)
 
 ``` r
 cnb.rec = cnv.ss %>% filter(prop.db < 0.01, nb > 1, nb < 10, !exon, enhancer.epi) %>% 
@@ -379,10 +412,11 @@ ggplot(cnb.rec, aes(x = d/1000, y = cnb, colour = project, fill = project)) +
     geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, ymin = cnb.5), alpha = 0.2, 
     linetype = 2, data = subset(cnb.rec, project == "controls")) + theme_bw() + 
     xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + 
-    ggtitle("Non-private")
+    ggtitle("Non-private") + scale_fill_brewer(name = "", palette = "Set1") + 
+    scale_colour_brewer(name = "", palette = "Set1")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-14-2.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-15-2.png)
 
 Rare CNVs hitting epilepsy genes
 --------------------------------
@@ -417,7 +451,7 @@ ggplot(gene.sum.n, aes(x = size, colour = set, linetype = set)) + stat_density(s
     1), legend.justification = c(0, 1))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 Eventially we can check that the exonic sequence size and number of exons are also controlled by this approach.
 
@@ -429,7 +463,7 @@ ggplot(gene.sum.n, aes(x = exon.size, colour = set, linetype = set)) + stat_dens
     1), legend.justification = c(0, 1))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-17-1.png)
 
 ``` r
 ggplot(gene.sum.n, aes(x = nb.exon, colour = set, linetype = set)) + stat_density(size = 2, 
@@ -439,7 +473,7 @@ ggplot(gene.sum.n, aes(x = nb.exon, colour = set, linetype = set)) + stat_densit
     1), legend.justification = c(0, 1))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-16-2.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-17-2.png)
 
 Then the new sampling-based test:
 
@@ -482,8 +516,8 @@ kable(test.epi.genes.sum)
 
 | test             |  odds.ratio|  gene|  gene.epi|  gene.epi.cont|        pv|
 |:-----------------|-----------:|-----:|---------:|--------------:|---------:|
-| allGenesDelNoDB  |    2.623862|   921|        17|          6.479|  0.000999|
-| sizeGenesDelNoDB |    1.770280|   921|        17|          9.603|  0.008991|
+| allGenesDelNoDB  |    2.631986|   921|        17|          6.459|  0.000999|
+| sizeGenesDelNoDB |    1.764034|   921|        17|          9.637|  0.015984|
 
 ``` r
 test.df = rbind(data.frame(exp = test.epi.genes$allGenesDelNoDB$exp, test = "all genes"), 
@@ -497,7 +531,7 @@ ggplot(test.df, aes(x = exp, fill = test)) + geom_histogram(position = "dodge",
     angle = -90)
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-18-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
 ### Exploring the enrichments
 
@@ -532,7 +566,8 @@ ggplot(enr.epi.freq, aes(x = factor(freq), y = odds.ratio, colour = project,
     1)))) + theme_bw() + ylim(0, max(enr.epi.freq$odds.ratio)) + scale_colour_hue() + 
     geom_hline(yintercept = 1, linetype = 3) + scale_size_manual(name = "P-value", 
     labels = c("<0.05", ">0.05"), values = c(4, 2)) + xlab("CNV frequency in public databases") + 
-    facet_grid(type ~ .) + ylab("fold-enrichment")
+    facet_grid(type ~ .) + ylab("fold-enrichment") + scale_colour_brewer(name = "", 
+    palette = "Set1")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-21-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-22-1.png)
