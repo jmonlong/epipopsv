@@ -69,13 +69,13 @@ formatOtherCalls <- function(others.f, files.f, freec.s=NULL,freec.l=NULL,cnmops
     ## BND: if intra-chr, could be CNVs
     res.m.bnd = subset(res.m, type=="BND")
     res.m.bnd$event = gsub(".*EVENT=([^;]+).*", "\\1", res.m.bnd$INFO)
-    res.m.bnd %<>% group_by(sample, type, event) %>% filter(length(unique(chr))==1) %>% summarize(chr=chr[1], end=max(start), start=min(start), su=min(su)) %>% ungroup
+    res.m.bnd %<>% group_by(sample, type, event) %>% filter(length(unique(chr))==1) %>% summarize(chr=chr[1], end=max(start), start=min(start), su=min(su)) %>% ungroup %>% filter(end-start<4e6)
     ## Merge back
     res.m = rbind(select(res.m.bnd, sample, chr, start, end, type, su), select(res.m.dd, sample, chr, start, end, type, su))
     res.m = subset(res.m, chr %in% 1:22 & end-start>300)
     res.m$cn = ifelse(res.m$type=="DEL",0,3)
     others.df = rbind(others.df, data.frame(method="LUMPY", set="loose", subset(res.m, sample %in% looses)[, c("sample","chr","start","end","cn")]))
-    LUMPY.TH = 3
+    LUMPY.TH = 4
     res.m = subset(res.m, su>LUMPY.TH & sample %in% stringents)
     others.df = rbind(others.df, data.frame(method="LUMPY", set="stringent", res.m[, c("sample","chr","start","end","cn")]))
   }

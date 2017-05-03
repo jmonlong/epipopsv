@@ -92,15 +92,13 @@ cnv.s = cnv.s %>% group_by(method) %>% do({
     subset(., individual %in% unique(subset(cnv.l, method == .$method[1])$individual))
 })
 cnv.s = cnv.s %>% group_by(method, individual) %>% do(concordance.nt(., subset(cnv.l, 
-    method == .$method[1] & individual == .$individual[1]))) %>% ungroup %>% 
-    mutate(conc.null = as.logical(rbinom(n(), 1, prop)))
+    method == .$method[1] & individual == .$individual[1]))) %>% ungroup
 ```
 
 ``` r
 conc.nt = cnv.s %>% group_by(sample, method) %>% summarize(nb.c = sum(conc), 
-    prop.c = mean(conc), nb.c.null = sum(conc.null), prop.c.null = mean(conc.null)) %>% 
-    mutate(method = factor(as.character(method), levels = methods.f)) %>% group_by(method) %>% 
-    mutate(nb.c.n = winsorF(nb.c - nb.c.null, med.u = 2))
+    prop.c = mean(conc)) %>% mutate(method = factor(as.character(method), levels = methods.f)) %>% 
+    group_by(method) %>% mutate(nb.c = winsorF(nb.c, med.u = 2))
 ggplot(conc.nt, aes(x = method, y = prop.c)) + geom_boxplot(aes(fill = method)) + 
     theme_bw() + xlab("") + ylab("proportion of replicated calls per sample") + 
     ylim(0, 1) + coord_flip() + guides(fill = FALSE) + scale_fill_manual(values = cbPalette)
@@ -109,7 +107,7 @@ ggplot(conc.nt, aes(x = method, y = prop.c)) + geom_boxplot(aes(fill = method)) 
 ![](PopSV-methodBenchmark-cagekid_files/figure-markdown_github/unnamed-chunk-4-1.png)
 
 ``` r
-ggplot(conc.nt, aes(x = method, y = nb.c.n)) + geom_boxplot(aes(fill = method)) + 
+ggplot(conc.nt, aes(x = method, y = nb.c)) + geom_boxplot(aes(fill = method)) + 
     theme_bw() + xlab("") + ylab("number of replicated calls per sample") + 
     coord_flip() + guides(fill = FALSE) + scale_fill_manual(values = cbPalette)
 ```

@@ -204,12 +204,10 @@ Replication in the second twin
 twins = subset(files.df, grepl("Twin", ped))$sample
 cnv.s = res.df %>% filter(prop < 0.5, sample %in% twins)
 load("../data/cnvs-PopSV-twin-5kbp-FDR05.RData")
-res.df = subset(res.df, sample %in% twins)
-res.df$method = "PopSV"
 cnv.l = data.frame(method = "PopSV", set = "loose", res.df[, c("sample", "chr", 
     "start", "end")])
-cnv.l = rbind(cnv.l, subset(others.df, sample %in% twins & set == "loose")[, 
-    c("method", "set", "sample", "chr", "start", "end")])
+cnv.l = rbind(cnv.l, subset(others.df, set == "loose")[, c("method", "set", 
+    "sample", "chr", "start", "end")])
 ## Sample information
 samp.info = files.df[, c("sample", "family", "ped")]
 cnv.s = merge(cnv.s, samp.info)
@@ -230,14 +228,12 @@ concordance.twin <- function(cnv.df, cnv.2.df) {
 }
 
 cnv.s = cnv.s %>% group_by(method) %>% do(concordance.twin(., subset(cnv.l, 
-    method == .$method[1]))) %>% ungroup %>% mutate(conc.null = as.logical(rbinom(n(), 
-    1, prop)))
+    method == .$method[1]))) %>% ungroup
 ```
 
 ``` r
 conc.tw = cnv.s %>% group_by(sample, method) %>% summarize(nb.c = sum(conc), 
-    prop.c = mean(conc), nb.c.null = sum(conc.null), prop.c.null = mean(conc.null)) %>% 
-    mutate(method = factor(as.character(method), levels = methods.f))
+    prop.c = mean(conc)) %>% mutate(method = factor(as.character(method), levels = methods.f))
 ggplot(conc.tw, aes(x = method, y = prop.c)) + geom_boxplot(aes(fill = method)) + 
     theme_bw() + xlab("") + ylab("proportion of replicated calls per sample") + 
     ylim(0, 1) + coord_flip() + guides(fill = FALSE) + scale_fill_manual(values = cbPalette)
@@ -246,7 +242,7 @@ ggplot(conc.tw, aes(x = method, y = prop.c)) + geom_boxplot(aes(fill = method)) 
 ![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-7-1.png)
 
 ``` r
-ggplot(conc.tw, aes(x = method, y = nb.c - nb.c.null)) + geom_boxplot(aes(fill = method)) + 
+ggplot(conc.tw, aes(x = method, y = nb.c)) + geom_boxplot(aes(fill = method)) + 
     theme_bw() + xlab("") + ylab("number of replicated calls per sample") + 
     coord_flip() + guides(fill = FALSE) + scale_fill_manual(values = cbPalette)
 ```
