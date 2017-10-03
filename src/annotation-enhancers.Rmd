@@ -30,7 +30,7 @@ We downloaded GTEx eQTLs (v6p) from the [GTEx Portal](http://gtexportal.org/home
 It requires registration (quick and free).
 We downloaded `GTEx_Analysis_v6p_eQTL.tar` tar file with *eGene and significant snp-gene associations based on permutations*.
 
-```{r gtex}
+```{r gtex, cache=TRUE}
 gtex.f = untar("GTEx_Analysis_v6p_eQTL.tar", list=TRUE)
 gtex.f = grep("snpgene_pairs", gtex.f, value=TRUE)
 eqtl = lapply(gtex.f, function(fn){
@@ -51,12 +51,13 @@ From Maurano et al ([Science 2012](http://www.sciencemag.org/content/337/6099/11
 All the correlated pairs of DNase sites are available [here](http://www.uwencode.org/proj/Science_Maurano_Humbert_et_al/data/genomewideCorrs_above0.7_promoterPlusMinus500kb_withGeneNames_35celltypeCategories.bed8.gz).
 
 ```{r dnase}
-if(!file.exists("genomewideCorrs_above0.7_promoterPlusMinus500kb_withGeneNames_35celltypeCategories.bed8.gz")) download.file("http://www.uwencode.org/proj/Science_Maurano_Humbert_et_al/data/genomewideCorrs_above0.7_promoterPlusMinus500kb_withGeneNames_35celltypeCategories.bed8.gz", "genomewideCorrs_above0.7_promoterPlusMinus500kb_withGeneNames_35celltypeCategories.bed8.gz")
+if(!file.exists("genomewideCorrs_above0.7_promoterPlusMinus500kb_withGeneNames_35celltypeCategories.bed8.gz")) download.file("https://resources.altius.org/publications/Science_Maurano_Humbert_et_al/data/genomewideCorrs_above0.7_promoterPlusMinus500kb_withGeneNames_35celltypeCategories.bed8.gz", "genomewideCorrs_above0.7_promoterPlusMinus500kb_withGeneNames_35celltypeCategories.bed8.gz")
 dnaseMap.all = read.table("genomewideCorrs_above0.7_promoterPlusMinus500kb_withGeneNames_35celltypeCategories.bed8.gz", as.is=TRUE)
 dnaseMap = dnaseMap.all[,4:8]
 colnames(dnaseMap) = c("gene", "chr","start","end","score")
 dnaseMap = makeGRangesFromDataFrame(dnaseMap, keep.extra.columns=TRUE)
 ```
+
 
 ## Save the R objects
 
