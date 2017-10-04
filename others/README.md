@@ -3,6 +3,7 @@
 ## Running the methods
 
 Find how PopSV and the other methods were run in their respective folder.
+The raw calls of each method were imported in R and formatted by `formatCalls-CNVnator-FREEC-LUMPY-cnMOPS.R`.
 
 ### PopSV 
 
