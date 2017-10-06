@@ -145,16 +145,6 @@ ggplot(subset(rk2.m, set!="WGS"),aes(x=sample, colour=coverage)) + ggplot2::geom
 ```
 
 
-```{r, echo=FALSE, eval=FALSE}
-pdf("epilepsy-biasWGS.pdf", 8, 6)
-plot.bc(bc.norm, sub.samples, 1) + ggtitle("Normalized bin counts")
-plot.bc(bc.norm.sim, sub.samples, 1) + ggtitle("Control : simulated bin counts")
-plot.bc(bc.norm.shuf, sub.samples, 1) + ggtitle("Control : shuffled bin counts")
-ggplot(var.is,aes(x=set,y=mean.inter.samp)) + geom_violin(aes(fill=set), scale="width") + ylab("bin inter-sample mean coverage") + theme_bw() + theme(text=element_text(size=20)) + guides(fill=FALSE) + coord_flip() + xlab("")
-ggplot(var.is,aes(x=set,y=sd.inter.samp)) + geom_violin(aes(fill=set), scale="width") + ylab("bin inter-sample standard deviation") + theme_bw() + theme(text=element_text(size=20)) + guides(fill=FALSE) + coord_flip() + xlab("")
-ggplot(subset(rk.m, set=="WGS"),aes(x=sample, colour=coverage)) + geom_point(aes(y=prop.bin)) + geom_linerange(aes(ymin=0,ymax=prop.bin)) + theme_bw() + xlab("sample") + geom_hline(yintercept=c(0,1/length(samples), -1/length(samples)),linetype=c(1,2,2)) + ylab("propotion of the studied genome") + scale_fill_hue(name="coverage") +  theme(text=element_text(size=20),legend.position=c(0,1),legend.justification=c(0,1), axis.text.x=element_blank())
-ggplot(subset(rk.m, set!="WGS"),aes(x=sample, colour=coverage)) + geom_point(aes(y=prop.bin)) + geom_linerange(aes(ymin=0,ymax=prop.bin)) + theme_bw() + xlab("sample")+ ylab("propotion of the studied genome") + scale_fill_hue(name="coverage") +  theme(text=element_text(size=20),axis.text.x=element_blank(),legend.position="bottom") + facet_grid(set~.) + geom_hline(yintercept=c(0,1/length(samples), -1/length(samples)),linetype=rep(c(1,2,2),2))
-ggplot(subset(rk2.m, set=="WGS"),aes(x=sample, colour=coverage)) + geom_point(aes(y=prop.bin)) + geom_linerange(aes(ymin=0,ymax=prop.bin)) + theme_bw() + xlab("sample") + geom_hline(yintercept=c(0,1/length(samples), -1/length(samples)),linetype=c(1,2,2)) + ylab("propotion of the studied genome") + scale_fill_hue(name="coverage") +  theme(text=element_text(size=20),legend.position=c(0,1),legend.justification=c(0,1), axis.text.x=element_blank())
-ggplot(subset(rk2.m, set!="WGS"),aes(x=sample, colour=coverage)) + ggplot2::geom_point(aes(y=prop.bin)) + geom_linerange(aes(ymin=0,ymax=prop.bin)) + theme_bw() + xlab("sample") + geom_hline(yintercept=c(0,1/length(samples), -1/length(samples)),linetype=rep(c(1,2,2),2)) + ylab("propotion of the studied genome") + scale_fill_hue(name="coverage") +  theme(text=element_text(size=20),axis.text.x=element_blank(),legend.position="bottom") + facet_grid(set~.)
-dev.off()
+```{r, echo=FALSE}
+save(bc.norm, sub.samples, bc.norm.sim, bc.norm.shuf, var.is, rk.m, rk2.m, file='epilepsy-wgs-bias.RData')
 ```

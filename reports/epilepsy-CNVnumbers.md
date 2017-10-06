@@ -17,15 +17,15 @@ source("EpiPopSV-scripts.R")
 ## Load CNVs
 cnv.all = read.table("../data/cnvs-PopSV-Epilepsy-198affected-301controls-5kb.tsv.gz", 
     header = TRUE, as.is = TRUE, sep = "\t")
-cnv.all = cnv.all %>% mutate(project = ifelse(project == "affected", "epilepsy", 
-    "parent"))
+cnv.all = cnv.all %>% mutate(project = ifelse(project == "affected", "patients", 
+    "controls"))
 ```
 
 Number of CNVs per sample
 -------------------------
 
 ``` r
-cnv.epi.s = cnv.all %>% filter(project == "epilepsy") %>% mutate(cn = round(2 * 
+cnv.epi.s = cnv.all %>% filter(project == "patients") %>% mutate(cn = round(2 * 
     fc), cn = ifelse(cn == 2 & z > 0, 3, cn), cn = ifelse(cn == 2 & z < 0, 1, 
     cn), cn.class = ifelse(cn > 2, "3+", cn), cn.class = factor(cn.class, levels = c("0", 
     "1", "3+"))) %>% group_by(sample, cn.class) %>% summarize(call = n(), mb = sum((end - 
@@ -67,7 +67,7 @@ CNV catalog and frequency annotation
 
 ``` r
 load("../data/SVdatabase.RData")
-cat.epi = cnv.all %>% filter(project == "epilepsy") %>% reduceDf %>% dbPropDf(svs.gr)
+cat.epi = cnv.all %>% filter(project == "patients") %>% reduceDf %>% dbPropDf(svs.gr)
 
 pal.spec = rev(brewer.pal(6, "Spectral"))
 bks = c(0, 0.01, 0.1, 0.25, 0.5, 1)
@@ -99,12 +99,14 @@ Regions with rare CNVs
 
 Focusing on rare CNVs, how many regions have a homozygous/heterozygous deletions or duplications ?
 
+### Patients
+
 ``` r
 cnv.all$prop.db = cnv.all %>% makeGRangesFromDataFrame(keep.extra.columns = TRUE) %>% 
     dbProp(svs.gr)
 cnv.all %<>% group_by(project) %>% do(freq.range(., annotate.only = TRUE)) %>% 
     ungroup
-cnv.sum = cnv.all %>% filter(project == "epilepsy") %>% mutate(cn.class = cut(fc, 
+cnv.sum = cnv.all %>% filter(project == "patients") %>% mutate(cn.class = cut(fc, 
     breaks = c(0, 0.25, 1, Inf), labels = c(0, 1, ">=3"), include.lowest = TRUE))
 
 sum.all = cnv.sum %>% filter(prop.db < 0.01) %>% mutate(cn.class = "all") %>% 
@@ -121,7 +123,80 @@ kable(sum.cn, digits = 3)
 | all      |   12480|            1.000|
 | 0        |      21|            0.002|
 | 1        |    8022|            0.643|
-| &gt;=3   |    4850|            0.389|
+| \>=3     |    4850|            0.389|
+
+### Controls
+
+``` r
+cnv.sum.c = cnv.all %>% filter(project != "patients") %>% mutate(cn.class = cut(fc, 
+    breaks = c(0, 0.25, 1, Inf), labels = c(0, 1, ">=3"), include.lowest = TRUE))
+sum.all.c = cnv.sum.c %>% filter(prop.db < 0.01) %>% mutate(cn.class = "all") %>% 
+    group_by(cn.class) %>% summarize(region = round(sum(1/nb)), prop.all.region = 1)
+sum.cn.c = cnv.sum.c %>% filter(prop.db < 0.01) %>% group_by(cn.class) %>% do(freq.range(., 
+    annotate.only = TRUE)) %>% summarize(region = round(sum(1/nb))) %>% mutate(prop.all.region = region/sum.all.c$region)
+sum.cn.c = rbind(sum.all.c, sum.cn.c)
+
+kable(sum.cn.c, digits = 3)
+```
+
+| cn.class |  region|  prop.all.region|
+|:---------|-------:|----------------:|
+| all      |   18821|            1.000|
+| 0        |      31|            0.002|
+| 1        |   11671|            0.620|
+| \>=3     |    7945|            0.422|
+
+Proportion of deletion among rare CNVs
+--------------------------------------
+
+``` r
+del.dup = cnv.all %>% filter(prop.db < 0.01) %>% group_by(project) %>% summarize(nb.del = sum(fc < 
+    1), nb.dup = sum(fc > 1))
+kable(del.dup)
+```
+
+| project  |  nb.del|  nb.dup|
+|:---------|-------:|-------:|
+| controls |   15962|   12370|
+| patients |   11280|    7275|
+
+``` r
+prop.test(as.matrix(del.dup[, -1]))
+```
+
+    ## 
+    ##  2-sample test for equality of proportions with continuity
+    ##  correction
+    ## 
+    ## data:  as.matrix(del.dup[, -1])
+    ## X-squared = 91.15, df = 1, p-value < 2.2e-16
+    ## alternative hypothesis: two.sided
+    ## 95 percent confidence interval:
+    ##  -0.05366963 -0.03539272
+    ## sample estimates:
+    ##    prop 1    prop 2 
+    ## 0.5633912 0.6079224
+
+``` r
+## Downsampling the controls to 198 samples
+del.dup.ds = cnv.all %>% filter(prop.db < 0.01) %>% group_by(project) %>% filter(sample %in% 
+    sample(unique(sample), 198)) %>% summarize(nb.del = sum(fc < 1), nb.dup = sum(fc > 
+    1))
+prop.test(as.matrix(del.dup.ds[, -1]))
+```
+
+    ## 
+    ##  2-sample test for equality of proportions with continuity
+    ##  correction
+    ## 
+    ## data:  as.matrix(del.dup.ds[, -1])
+    ## X-squared = 28.349, df = 1, p-value = 1.013e-07
+    ## alternative hypothesis: two.sided
+    ## 95 percent confidence interval:
+    ##  -0.03719191 -0.01713421
+    ## sample estimates:
+    ##    prop 1    prop 2 
+    ## 0.5807593 0.6079224
 
 CNVs and epilepsy genes
 -----------------------
@@ -155,11 +230,11 @@ summaryExon <- function(df) {
         x)))
 }
 
-sum.epi = rbind(cnv.all %>% filter(project == "epilepsy", prop.db < 0.01) %>% 
+sum.epi = rbind(cnv.all %>% filter(project == "patients", prop.db < 0.01) %>% 
     group_by(sample) %>% do(summaryEpi(.)) %>% group_by(sample) %>% arrange(d) %>% 
     mutate(c1 = cnv[1], c2 = cnv[2], c3 = cnv[3]) %>% ungroup %>% arrange(desc(c1), 
     desc(c2), desc(c3)) %>% mutate(gene = "epilepsy genes", sample = factor(sample, 
-    levels = unique(sample))), cnv.all %>% filter(project == "epilepsy", prop.db < 
+    levels = unique(sample))), cnv.all %>% filter(project == "patients", prop.db < 
     0.01) %>% group_by(sample) %>% do(summaryExon(.)) %>% group_by(sample) %>% 
     arrange(d) %>% mutate(c1 = cnv[1], c2 = cnv[2], c3 = cnv[3]) %>% ungroup %>% 
     arrange(desc(c1), desc(c2), desc(c3)) %>% mutate(gene = "all genes", sample = factor(sample, 
@@ -174,4 +249,4 @@ ggplot(sum.epi, aes(x = sample, y = cnv, fill = d)) + geom_bar(stat = "identity"
     label.position = "right", label.hjust = 0.5))
 ```
 
-![](epilepsy-CNVnumbers_files/figure-markdown_github/unnamed-chunk-6-1.png)
+![](epilepsy-CNVnumbers_files/figure-markdown_github/unnamed-chunk-7-1.png)
