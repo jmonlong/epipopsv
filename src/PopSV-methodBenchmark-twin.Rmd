@@ -178,6 +178,25 @@ ggplot(conc.tw,aes(x=method,y=prop.c)) + geom_boxplot(aes(fill=method)) + theme_
 ggplot(conc.tw,aes(x=method,y=nb.c)) + geom_boxplot(aes(fill=method)) + theme_bw() + xlab("")  + ylab("number of replicated calls per sample") + coord_flip() + guides(fill=FALSE) + scale_fill_manual(values=cbPalette)
 ```
 
+For LUMPY, CNVnator and PopSV we can further play with post-calling metrics. 
+How does the performance change when playing with the calls' significance.
+For LUMPY, we use the number of supporting reads, for CNVnator the minimum of `eval1` and `eval2` and for PopSV the Q-value. 
+More information on the `formatCalls-CNVnator-FREEC-LUMPY-cnMOPS.R` script (in the `others` folder).
+
+```{r}
+conc.sum.sig <- function(df){
+  res = lapply(seq(0,1,.01), function(sigq){
+    sigq.v = quantile(df$sig, probs=sigq)
+    df %>% filter(sig<sigq.v) %>% group_by(sample) %>% summarize(nb.c=sum(conc), prop.c=mean(conc)) %>% mutate(sigq=sigq)
+  })
+  do.call(rbind, res)
+}
+cnv.tw.sig = cnv.s %>% group_by(method) %>% do(conc.sum.sig(.))
+
+cnv.tw.sig %>% group_by(method, sigq) %>% summarize(nb.c=mean(nb.c), prop.u=quantile(prop.c,1), prop.l=quantile(prop.c, 0), prop.c=mean(prop.c)) %>% ggplot(aes(x=nb.c, y=prop.c, colour=method)) + geom_point() + theme_bw() + geom_line() + geom_errorbar(aes(ymin=prop.l, ymax=prop.u)) + ylab("proportion of replicated calls per sample") + xlab('number of replicated calls per sample')
+```
+
+
 
 ## Bias ?
 

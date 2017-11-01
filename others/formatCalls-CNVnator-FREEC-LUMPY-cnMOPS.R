@@ -2,6 +2,9 @@
 ## others.f: the output file with the merged calls.
 ## files.f: the file with the normal/tumor information.
 
+library(dplyr)
+library(magrittr)
+
 formatOtherCalls <- function(others.f, files.f, freec.s=NULL,freec.l=NULL,cnmops.s=NULL,cnmops.l=NULL, cnvnator.f=NULL, lumpy.f=NULL){
   others.df = NULL
 
@@ -16,14 +19,16 @@ formatOtherCalls <- function(others.f, files.f, freec.s=NULL,freec.l=NULL,cnmops
     res.m = read.table(freec.s, header=TRUE, as.is=TRUE, sep="\t")
     res.m = subset(res.m, sample %in% stringents)
     res.m$start = res.m$start + 1
-    others.df = rbind(others.df, data.frame(method="FREEC", set="stringent", res.m[, c("sample","chr","start","end","cn")]))
+    res.m$sig = NA
+    others.df = rbind(others.df, data.frame(method="FREEC", set="stringent", res.m[, c("sample","chr","start","end","cn","sig")]))
   }
 
   if(!is.null(freec.l)){
     res.m = read.table(freec.l, header=TRUE, as.is=TRUE, sep="\t")
     res.m = subset(res.m, sample %in% looses)
     res.m$start = res.m$start + 1
-    others.df = rbind(others.df, data.frame(method="FREEC", set="loose", res.m[, c("sample","chr","start","end","cn")]))
+    res.m$sig = NA
+    others.df = rbind(others.df, data.frame(method="FREEC", set="loose", res.m[, c("sample","chr","start","end","cn","sig")]))
   }
 
   if(!is.null(cnmops.s)){
@@ -32,7 +37,8 @@ formatOtherCalls <- function(others.f, files.f, freec.s=NULL,freec.l=NULL,cnmops
     colnames(res.m) = c("chr","start","end","sample","cn")
     res.m = subset(res.m, sample %in% stringents)
     res.m$cn = as.numeric(gsub("CN","",res.m$cn))
-    others.df = rbind(others.df, data.frame(method="cn.MOPS", set="stringent", res.m[, c("sample","chr","start","end","cn")]))
+    res.m$sig = NA
+    others.df = rbind(others.df, data.frame(method="cn.MOPS", set="stringent", res.m[, c("sample","chr","start","end","cn","sig")]))
   }
   if(!is.null(cnmops.l)){
     res.m = load(cnmops.l)
@@ -40,7 +46,8 @@ formatOtherCalls <- function(others.f, files.f, freec.s=NULL,freec.l=NULL,cnmops
     colnames(res.m) = c("chr","start","end","sample","cn")
     res.m = subset(res.m, sample %in% looses)
     res.m$cn = as.numeric(gsub("CN","",res.m$cn))
-    others.df = rbind(others.df, data.frame(method="cn.MOPS", set="loose", res.m[, c("sample","chr","start","end","cn")]))
+    res.m$sig = NA
+    others.df = rbind(others.df, data.frame(method="cn.MOPS", set="loose", res.m[, c("sample","chr","start","end","cn","sig")]))
   }
 
   if(!is.null(cnvnator.f)){
@@ -51,10 +58,11 @@ formatOtherCalls <- function(others.f, files.f, freec.s=NULL,freec.l=NULL,cnmops
     res.m$start = as.numeric(unlist(lapply(pos.l, "[",1)))
     res.m$end = as.numeric(unlist(lapply(pos.l, "[",2)))
     res.m$cn = 2 * res.m$normalized_RD
-    others.df = rbind(others.df, data.frame(method="CNVnator", set="loose", subset(res.m, sample %in% looses)[, c("sample","chr","start","end","cn")]))
+    res.m$sig = ifelse(res.m$eval1<res.m$eval2, res.m$eval1, res.m$eval2)
+    others.df = rbind(others.df, data.frame(method="CNVnator", set="loose", subset(res.m, sample %in% looses)[, c("sample","chr","start","end","cn","sig")]))
     CNVNATOR.TH = 1e-5
-    res.m = subset(res.m, sample %in% stringents & (eval1 < CNVNATOR.TH | eval2 < CNVNATOR.TH))
-    others.df = rbind(others.df, data.frame(method="CNVnator", set="stringent", res.m[, c("sample","chr","start","end","cn")]))
+    res.m = subset(res.m, sample %in% stringents & sig < CNVNATOR.TH)
+    others.df = rbind(others.df, data.frame(method="CNVnator", set="stringent", res.m[, c("sample","chr","start","end","cn","sig")]))
   }
 
   if(!is.null(lumpy.f)){
@@ -74,10 +82,11 @@ formatOtherCalls <- function(others.f, files.f, freec.s=NULL,freec.l=NULL,cnmops
     res.m = rbind(select(res.m.bnd, sample, chr, start, end, type, su), select(res.m.dd, sample, chr, start, end, type, su))
     res.m = subset(res.m, chr %in% 1:22 & end-start>300)
     res.m$cn = ifelse(res.m$type=="DEL",0,3)
-    others.df = rbind(others.df, data.frame(method="LUMPY", set="loose", subset(res.m, sample %in% looses)[, c("sample","chr","start","end","cn")]))
+    res.m$sig = -res.m$su
+    others.df = rbind(others.df, data.frame(method="LUMPY", set="loose", subset(res.m, sample %in% looses)[, c("sample","chr","start","end","cn","sig")]))
     LUMPY.TH = 4
     res.m = subset(res.m, su>LUMPY.TH & sample %in% stringents)
-    others.df = rbind(others.df, data.frame(method="LUMPY", set="stringent", res.m[, c("sample","chr","start","end","cn")]))
+    others.df = rbind(others.df, data.frame(method="LUMPY", set="stringent", res.m[, c("sample","chr","start","end","cn","sig")]))
   }
 
   save(others.df, file=others.f)
