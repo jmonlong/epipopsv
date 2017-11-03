@@ -35,6 +35,7 @@ rownames(ped) = ped$sample
 ## CNVs from PopSV, FREEC, CNVnator, cn.MOPS, LUMPY
 load("../data/cnvs-PopSV-twin-5kbp-FDR001.RData")
 res.df$method = "PopSV"
+res.df$sig = res.df$qv
 load("../data/cnvs-otherMethods-twin-5kbp.RData")
 com.cols = intersect(colnames(res.df), colnames(others.df))
 res.df = rbind(res.df[,com.cols], subset(others.df, set=="stringent")[,com.cols])
@@ -149,8 +150,9 @@ lapply(res.l, function(l)l$dendro)
 twins = subset(files.df, grepl("Twin", ped))$sample
 cnv.s = res.df %>% filter(prop<.5, sample %in% twins)
 load("../data/cnvs-PopSV-twin-5kbp-FDR05.RData")
-cnv.l = data.frame(method="PopSV", set="loose", res.df[, c("sample","chr","start","end")])
-cnv.l = rbind(cnv.l, subset(others.df, set=="loose")[, c("method","set","sample","chr","start","end")])
+res.df$sig = res.df$qv
+cnv.l = data.frame(method="PopSV", set="loose", res.df[, c("sample","chr","start","end","sig")])
+cnv.l = rbind(cnv.l, subset(others.df, set=="loose")[, c("method","set","sample","chr","start","end", "sig")])
 ## Sample information
 samp.info = files.df[,c("sample","family","ped")]
 cnv.s = merge(cnv.s, samp.info)
@@ -185,15 +187,15 @@ More information on the `formatCalls-CNVnator-FREEC-LUMPY-cnMOPS.R` script (in t
 
 ```{r}
 conc.sum.sig <- function(df){
-  res = lapply(seq(0,1,.01), function(sigq){
+  res = lapply(seq(0,1,.05), function(sigq){
     sigq.v = quantile(df$sig, probs=sigq)
     df %>% filter(sig<sigq.v) %>% group_by(sample) %>% summarize(nb.c=sum(conc), prop.c=mean(conc)) %>% mutate(sigq=sigq)
   })
   do.call(rbind, res)
 }
-cnv.tw.sig = cnv.s %>% group_by(method) %>% do(conc.sum.sig(.))
+cnv.tw.sig = cnv.s %>% filter(!is.na(sig)) %>% group_by(method) %>% do(conc.sum.sig(.))
 
-cnv.tw.sig %>% group_by(method, sigq) %>% summarize(nb.c=mean(nb.c), prop.u=quantile(prop.c,1), prop.l=quantile(prop.c, 0), prop.c=mean(prop.c)) %>% ggplot(aes(x=nb.c, y=prop.c, colour=method)) + geom_point() + theme_bw() + geom_line() + geom_errorbar(aes(ymin=prop.l, ymax=prop.u)) + ylab("proportion of replicated calls per sample") + xlab('number of replicated calls per sample')
+cnv.tw.sig %>% group_by(method, sigq) %>% summarize(nb.c=mean(nb.c), prop.u=quantile(prop.c,1), prop.l=quantile(prop.c, 0), prop.c=mean(prop.c)) %>% ggplot(aes(x=nb.c, y=prop.c, colour=method)) + geom_point() + theme_bw() + geom_line() + geom_errorbar(aes(ymin=prop.l, ymax=prop.u)) + ylab("proportion of replicated calls per sample") + xlab('number of replicated calls per sample') + scale_colour_manual(name='', values=cbPalette[c(1,2,5)]) + theme(legend.position=c(.99,.01), legend.justification=c(1,0))
 ```
 
 
@@ -217,7 +219,7 @@ meth.2d = meth.df %>% group_by(sample, method, method2) %>% summarize(nb.call=n(
 
 meth.2d %>% group_by(method, method2) %>% summarize(prop.call=median(prop.call)) %>% ggplot(aes(x=method, y=method2, fill=prop.call)) + geom_bin2d() + theme_bw() + scale_fill_gradientn(name="proportion\nof calls",colors=rev(terrain.colors(10))) + xlab("calls from") + ylab("found by")
 
-ggplot(subset(meth.2d, method != method2), aes(x=method2, fill=method, y=prop.call)) + geom_bar(stat="identity",position="dodge", data=meth.2d %>% filter(method!=method2) %>% group_by(method, method2) %>% summarize(prop.call=median(prop.call))) + geom_boxplot(alpha=0,position="dodge") + theme_bw() + scale_fill_brewer(name="call from", palette="Set1") + xlab("found by") + ylab("proportion of calls") + ylim(0,1)
+ggplot(subset(meth.2d, method != method2), aes(x=method2, fill=method, y=prop.call)) + geom_bar(stat="identity",position="dodge", data=meth.2d %>% filter(method!=method2) %>% group_by(method, method2) %>% summarize(prop.call=median(prop.call))) + geom_boxplot(alpha=0,position=position_dodge(.9)) + theme_bw() + scale_fill_brewer(name="call from", palette="Set1") + xlab("found by") + ylab("proportion of calls") + ylim(0,1)
 ```
 
 If we focus only on regions called in at least two methods (out of 5).
@@ -228,7 +230,7 @@ meth.2d.p = meth.df %>% group_by(method, sample, chr, start, end) %>% mutate(nb.
 
 meth.2d.p %>% group_by(method, method2) %>% summarize(prop.call=median(prop.call)) %>% ggplot(aes(x=method, y=method2, fill=prop.call)) + geom_bin2d() + theme_bw() + scale_fill_gradientn(name="proportion\nof calls",colors=rev(terrain.colors(10))) + xlab("calls from") + ylab("found by") + ggtitle("Calls in 2 methods or more")
 
-ggplot(subset(meth.2d.p, method != method2), aes(x=method2, fill=method, y=prop.call)) + geom_bar(stat="identity",position="dodge", data=meth.2d.p %>% filter(method!=method2) %>% group_by(method, method2) %>% summarize(prop.call=median(prop.call))) + geom_boxplot(alpha=0,position="dodge") + theme_bw() + scale_fill_brewer(name="call from", palette="Set1") + xlab("found by") + ylab("proportion of calls") + ylim(0,1) + ggtitle("Calls in 2 methods or more")
+ggplot(subset(meth.2d.p, method != method2), aes(x=method2, fill=method, y=prop.call)) + geom_bar(stat="identity",position="dodge", data=meth.2d.p %>% filter(method!=method2) %>% group_by(method, method2) %>% summarize(prop.call=median(prop.call))) + geom_boxplot(alpha=0,position=position_dodge(.9)) + theme_bw() + scale_fill_brewer(name="call from", palette="Set1") + xlab("found by") + ylab("proportion of calls") + ylim(0,1) + ggtitle("Calls in 2 methods or more")
 ```
 
 
@@ -266,4 +268,8 @@ dup.check$method = factor(as.character(dup.check$method), levels=methods.f)
 
 ```{r, fig.height=8}
 ggplot(subset(dup.check, !is.na(nb.ol)), aes(x=winsorF(nb.ol,3), y=count, fill=method, group=paste(method,winsorF(nb.ol,3)))) + geom_boxplot()  + theme_bw() + xlab("overlapping X calls from other method") + ylab("number of calls per sample") + facet_wrap(~comp, scales="free") + theme(text=element_text(size=18)) + scale_fill_manual(values=cbPalette) + scale_x_continuous(breaks=1:3, labels=c(1,2,"3+"))
+```
+
+```{r, echo=FALSE}
+save(res.ave.samp, ri.df, ri.s, conc.tw, conc.tw.sig, meth.2d, meth.2d.p, file='PopSV-methodBenchmark-twin.RData')
 ```
