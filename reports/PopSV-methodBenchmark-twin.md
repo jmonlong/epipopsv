@@ -25,6 +25,7 @@ rownames(ped) = ped$sample
 ## CNVs from PopSV, FREEC, CNVnator, cn.MOPS, LUMPY
 load("../data/cnvs-PopSV-twin-5kbp-FDR001.RData")
 res.df$method = "PopSV"
+res.df$sig = res.df$qv
 load("../data/cnvs-otherMethods-twin-5kbp.RData")
 com.cols = intersect(colnames(res.df), colnames(others.df))
 res.df = rbind(res.df[, com.cols], subset(others.df, set == "stringent")[, com.cols])
@@ -204,10 +205,12 @@ Replication in the second twin
 twins = subset(files.df, grepl("Twin", ped))$sample
 cnv.s = res.df %>% filter(prop < 0.5, sample %in% twins)
 load("../data/cnvs-PopSV-twin-5kbp-FDR05.RData")
+res.df$sig = res.df$qv
 cnv.l = data.frame(method = "PopSV", set = "loose", res.df[, c("sample", "chr", 
-    "start", "end")])
+    "start", "end", "sig")])
 cnv.l = rbind(cnv.l, subset(others.df, set == "loose")[, c("method", "set", 
-    "sample", "chr", "start", "end")])
+    "sample", "chr", "start", "end", "sig")])
+cnv.l = subset(cnv.l, sample %in% twins)
 ## Sample information
 samp.info = files.df[, c("sample", "family", "ped")]
 cnv.s = merge(cnv.s, samp.info)
@@ -248,6 +251,102 @@ ggplot(conc.tw, aes(x = method, y = nb.c)) + geom_boxplot(aes(fill = method)) +
 ```
 
 ![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-7-2.png)
+
+For LUMPY, CNVnator and PopSV we can further play with post-calling metrics. How does the performance change when playing with the calls' significance. For LUMPY, we use the number of supporting reads, for CNVnator the minimum of `eval1` and `eval2` and for PopSV the Q-value. More information on the `formatCalls-CNVnator-FREEC-LUMPY-cnMOPS.R` script (in the `others` folder).
+
+``` r
+conc.sum.sig <- function(df) {
+    res = lapply(seq(0, 1, 0.05), function(sigq) {
+        sigq.v = quantile(df$sig, probs = sigq)
+        df %>% filter(sig < sigq.v) %>% group_by(sample) %>% summarize(nb.c = sum(conc), 
+            prop.c = mean(conc)) %>% mutate(sigq = sigq)
+    })
+    do.call(rbind, res)
+}
+conc.tw.sig = cnv.s %>% filter(!is.na(sig)) %>% group_by(method) %>% do(conc.sum.sig(.))
+
+conc.tw.sig %>% group_by(method, sigq) %>% summarize(nb.c = mean(nb.c), prop.u = quantile(prop.c, 
+    1), prop.l = quantile(prop.c, 0), prop.c = mean(prop.c)) %>% ggplot(aes(x = nb.c, 
+    y = prop.c, colour = method)) + geom_point() + theme_bw() + geom_line() + 
+    geom_errorbar(aes(ymin = prop.l, ymax = prop.u)) + ylab("proportion of replicated calls per sample") + 
+    xlab("number of replicated calls per sample") + scale_colour_manual(name = "", 
+    values = cbPalette[c(1, 2, 5)]) + theme(legend.position = c(0.99, 0.01), 
+    legend.justification = c(1, 0))
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-8-1.png)
+
+Variants called by several methods vs unique to one method
+----------------------------------------------------------
+
+How many of the calls are unique to PopSV ? What is the proportion of calls from other methods that were found by PopSV ?
+
+``` r
+olMethods <- function(df) {
+    ol = findOverlaps(makeGRangesFromDataFrame(df), makeGRangesFromDataFrame(df))
+    ol.meth = tapply(df$method[subjectHits(ol)], queryHits(ol), function(x) unique(x))
+    df = df[rep(as.numeric(names(ol.meth)), unlist(lapply(ol.meth, length))), 
+        ]
+    df$method2 = as.character(unlist(ol.meth))
+    df
+}
+meth.df = cnv.s %>% group_by(sample) %>% do(olMethods(.))
+
+call.samp = meth.df %>% group_by(method, sample, chr, start, end) %>% summarize(nb.meth = n()) %>% 
+    group_by(sample, method) %>% summarize(tot.call = n())
+meth.2d = meth.df %>% group_by(sample, method, method2) %>% summarize(nb.call = n()) %>% 
+    merge(call.samp) %>% mutate(prop.call = nb.call/tot.call) %>% ungroup %>% 
+    mutate(method = factor(method, levels = rev(methods.f)), method2 = factor(method2, 
+        levels = methods.f))
+
+meth.2d %>% group_by(method, method2) %>% summarize(prop.call = median(prop.call)) %>% 
+    ggplot(aes(x = method, y = method2, fill = prop.call)) + geom_bin2d() + 
+    theme_bw() + scale_fill_gradientn(name = "proportion\nof calls", colors = rev(terrain.colors(10))) + 
+    xlab("calls from") + ylab("found by")
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-9-1.png)
+
+``` r
+ggplot(subset(meth.2d, method != method2), aes(x = method2, fill = method, y = prop.call)) + 
+    geom_bar(stat = "identity", position = "dodge", data = meth.2d %>% filter(method != 
+        method2) %>% group_by(method, method2) %>% summarize(prop.call = median(prop.call))) + 
+    geom_boxplot(alpha = 0, position = position_dodge(0.9)) + theme_bw() + scale_fill_manual(values = cbPalette, 
+    name = "call from") + xlab("found by") + ylab("proportion of calls") + ylim(0, 
+    1)
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-9-2.png)
+
+If we focus only on regions called in at least two methods (out of 5).
+
+``` r
+call.samp.p = meth.df %>% group_by(method, sample, chr, start, end) %>% summarize(nb.meth = n()) %>% 
+    filter(nb.meth > 1) %>% group_by(sample, method) %>% summarize(tot.call = n())
+meth.2d.p = meth.df %>% group_by(method, sample, chr, start, end) %>% mutate(nb.meth = n()) %>% 
+    filter(nb.meth > 1) %>% group_by(sample, method, method2) %>% summarize(nb.call = n()) %>% 
+    merge(call.samp.p) %>% mutate(prop.call = nb.call/tot.call) %>% ungroup %>% 
+    mutate(method = factor(method, levels = rev(methods.f)), method2 = factor(method2, 
+        levels = methods.f))
+
+meth.2d.p %>% group_by(method, method2) %>% summarize(prop.call = median(prop.call)) %>% 
+    ggplot(aes(x = method, y = method2, fill = prop.call)) + geom_bin2d() + 
+    theme_bw() + scale_fill_gradientn(name = "proportion\nof calls", colors = rev(terrain.colors(10))) + 
+    xlab("calls from") + ylab("found by") + ggtitle("Calls in 2 methods or more")
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-10-1.png)
+
+``` r
+ggplot(subset(meth.2d.p, method != method2), aes(x = method2, fill = method, 
+    y = prop.call)) + geom_bar(stat = "identity", position = "dodge", data = meth.2d.p %>% 
+    filter(method != method2) %>% group_by(method, method2) %>% summarize(prop.call = median(prop.call))) + 
+    geom_boxplot(alpha = 0, position = position_dodge(0.9)) + theme_bw() + scale_fill_manual(values = cbPalette, 
+    name = "call from") + xlab("found by") + ylab("proportion of calls") + ylim(0, 
+    1) + ggtitle("Calls in 2 methods or more")
+```
+
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-10-2.png)
 
 Bias ?
 ------
@@ -295,4 +394,4 @@ ggplot(subset(dup.check, !is.na(nb.ol)), aes(x = winsorF(nb.ol, 3), y = count,
     labels = c(1, 2, "3+"))
 ```
 
-![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-9-1.png)
+![](PopSV-methodBenchmark-twin_files/figure-markdown_github/unnamed-chunk-12-1.png)
