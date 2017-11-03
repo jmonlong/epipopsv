@@ -153,6 +153,7 @@ load("../data/cnvs-PopSV-twin-5kbp-FDR05.RData")
 res.df$sig = res.df$qv
 cnv.l = data.frame(method="PopSV", set="loose", res.df[, c("sample","chr","start","end","sig")])
 cnv.l = rbind(cnv.l, subset(others.df, set=="loose")[, c("method","set","sample","chr","start","end", "sig")])
+cnv.l = subset(cnv.l, sample %in% twins)
 ## Sample information
 samp.info = files.df[,c("sample","family","ped")]
 cnv.s = merge(cnv.s, samp.info)
