@@ -73,165 +73,76 @@ NB.CORES = 3
 Exonic enrichment
 -----------------
 
-### Preliminary analysis: Large CNVs enriched in exons in patients
+This part was run on a high-performance computing cluster. The code can be found in `epilepsy-enrichmentPatterns-HPC.R`.
 
-We first recover the previously described enrichment of large-rare exonic CNVs in patients compared to controls.
+Briefly, 150 samples were sub-sampled 100 times in the patient and in the control cohorts. For each sub-sampling, the CNVs are merged per cohort and the catalogs are overlapped with exonic sequences. All genes and genes with a predicted loss-of-function intolerance (pLi&gt;0.9) were used.
+
+To control for the CNV size distribution, control regions were randomly selected in the reference genome controlling for the size and overlap with assembly gaps. To test for differences between patients and controls, CNVs from the two cohorts were permuted 10,000 times and we saved the difference between the medians of the two groups (see boxplots below).
+
+We performed the analysis separately on *large* CNVs (&gt;=50 Kbp) and *small* CNVs (&lt;50 Kbp). We also run the analysis using rare CNVs (&lt;1% frequency in the external SV databases) only.
 
 ``` r
-permF <- function(rr, cnv.df, feat.grl) {
-    info.df %<>% group_by(project) %>% filter(sample %in% sample(unique(sample), 
-        150))
-    cat.all = cnv.df %>% filter(sample %in% info.df$sample) %>% group_by(project) %>% 
-        do(reduceDf(.)) %>% mutate(sample = project, control = FALSE) %>% makeGRangesFromDataFrame(keep.extra.columns = TRUE)
-    cat.null = draw.controls(cat.all, list(centel = gen.feat.l$centel), nb.cores = 1)
-    cat.null$project = cat.null$sample
-    cat.null$sample = cat.all$sample = NULL
-    cat.null$control = TRUE
-    cat.all = c(cat.all, cat.null)
-    res = lapply(1:length(feat.grl), function(ii) {
-        cat.all$ol = overlapsAny(cat.all, feat.grl[[ii]])
-        obs = mcols(cat.all) %>% as.data.frame %>% group_by(control, project) %>% 
-            summarize(nb = sum(ol), prop = (1 + nb)/(1 + n())) %>% mutate(feat = names(feat.grl)[ii], 
-            rep = rr, set = "obs")
-        exp = mcols(cat.all) %>% as.data.frame %>% mutate(project = sample(project)) %>% 
-            group_by(control, project) %>% summarize(nb = sum(ol), prop = (1 + 
-            nb)/(1 + n())) %>% mutate(feat = names(feat.grl)[ii], rep = rr, 
-            set = "exp")
-        rbind(obs, exp)
-    })
-    do.call(rbind, res)
-}
+load("../data/permExCnv.RData")
 
-exons.all.pli = exons.grl
-exons.all.pli$exon.epi = NULL
-enr.large.all = do.call(rbind, mclapply(1:100, permF, cnv.df = subset(cnv.all, 
-    end - start > 50000), feat.grl = exons.all.pli, mc.cores = NB.CORES))
-enr.large.rare = do.call(rbind, mclapply(1:100, permF, cnv.df = subset(cnv.all, 
-    end - start > 50000 & prop.db.50 < 0.01), feat.grl = exons.all.pli, mc.cores = NB.CORES))
-enr.large.all.ss = enr.large.all %>% filter(set == "obs") %>% group_by(feat, 
-    project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% mutate(set = "all CNVs")
-enr.large.rare.ss = enr.large.rare %>% filter(set == "obs") %>% group_by(feat, 
-    project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% mutate(set = "rare CNVs")
-enr.large.s = rbind(enr.large.all.ss, enr.large.rare.ss)
+enr.obs = lapply(permExCnv, function(l) l$enr.obs)
+enr.obs = do.call(rbind, enr.obs)
 
-ggplot(enr.large.s, aes(x = feat, fill = project, y = winsorF(enr, 2))) + geom_boxplot(notch = TRUE) + 
-    theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks = c("exon", 
-    "exon.pli"), labels = c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(. ~ 
-    set) + geom_hline(yintercept = 1, linetype = 2) + scale_fill_brewer(name = "", 
-    palette = "Set1")
+enr.obs %<>% mutate(freq = factor(freq, levels = c("all", "rare"), labels = c("all CNVs", 
+    "rare CNVs")), size = factor(size, levels = c("large", "small"), labels = c("> 50 Kbp", 
+    "< 50 Kbp")))
+
+ggplot(enr.obs, aes(x = feat, y = enr, fill = project)) + geom_boxplot(notch = TRUE) + 
+    theme_bw() + facet_grid(size ~ freq, scales = "free") + xlab("") + ylab("fold-enrichment") + 
+    scale_x_discrete(breaks = c("exon", "exon.pli"), labels = c("all genes", 
+        "LoF\nintolerant\ngenes")) + geom_hline(yintercept = 1, linetype = 2) + 
+    scale_fill_brewer(name = "", palette = "Set1") + theme(legend.position = c(0.01, 
+    0.01), legend.justification = c(0, 0))
 ```
 
 ![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-3-1.png)
 
-### Sub-sampling and permutation
-
-Now using all the calls (mostly small CNVs), do we see the same exonic enrichment ?
-
-NOTE: This is 20 times less sub-sampling and permutations than in the paper, hence the signal might not be as clean. It might take more time but feel free to increase `NB.SUBSAMP` and `NB.PERMS`.
-
 ``` r
-NB.SUBSAMP = 100
-NB.PERMS = 20
-enr.all = do.call(rbind, mclapply(1:(NB.SUBSAMP * NB.PERMS), permF, cnv.df = cnv.all, 
-    feat.grl = exons.all.pli, mc.cores = NB.CORES))
-enr.rare = do.call(rbind, mclapply(1:(NB.SUBSAMP * NB.PERMS), permF, cnv.df = subset(cnv.all, 
-    prop.db < 0.01), feat.grl = exons.all.pli, mc.cores = NB.CORES))
-```
+enr.exp.diff = lapply(permExCnv, function(l) l$enr.exp.diff)
+enr.exp.diff = do.call(rbind, enr.exp.diff)
+enr.exp.diff %<>% mutate(set = factor(paste(freq, size), levels = c("all large", 
+    "rare large", "all small", "rare small"), labels = c("all CNVs > 50 Kbp", 
+    "rare CNVs > 50 Kbp", "all CNVs < 50 Kbp", "rare CNVs < 50 Kbp")))
 
-### Graphs for a batch of sub-sampling
+enr.obs.diff = enr.obs %>% mutate(set = factor(paste(freq, size), levels = c("all CNVs > 50 Kbp", 
+    "rare CNVs > 50 Kbp", "all CNVs < 50 Kbp", "rare CNVs < 50 Kbp"))) %>% group_by(set, 
+    feat, project) %>% summarize(enr = median(enr)) %>% group_by(set, feat) %>% 
+    summarize(diff = enr[project == "patients"] - enr[project == "controls"])
 
-``` r
-enr.all.ss = enr.all %>% filter(set == "obs", rep <= NB.SUBSAMP) %>% group_by(feat, 
-    project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% mutate(set = "all CNVs")
-enr.rare.ss = enr.rare %>% filter(set == "obs", rep <= NB.SUBSAMP) %>% group_by(feat, 
-    project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% mutate(set = "rare CNVs")
-enr.s = rbind(enr.all.ss, enr.rare.ss)
-
-ggplot(enr.s, aes(x = feat, fill = project, y = enr)) + geom_boxplot() + theme_bw() + 
-    xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks = c("exon", 
-    "exon.pli"), labels = c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(. ~ 
-    set) + geom_hline(yintercept = 1, linetype = 2) + scale_fill_brewer(name = "", 
+ggplot(enr.exp.diff, aes(x = feat, y = diff)) + geom_hline(yintercept = 0, linetype = 2) + 
+    geom_violin(fill = "grey90") + geom_point(data = enr.obs.diff, size = 5, 
+    color = "red") + theme_bw() + facet_wrap(~set, scales = "free", ncol = 2) + 
+    xlab("") + ylab("difference between patients and controls") + scale_x_discrete(breaks = c("exon", 
+    "exon.pli"), labels = c("all genes", "LoF\nintolerant\ngenes")) + scale_fill_brewer(name = "", 
     palette = "Set1")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-5-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-3-2.png)
 
-### Permutation test
+*The grey violin plot shows the distribution of the differences across the 10,000 permutations. The red dot represents the difference observed between the patients and controls.*
 
-It takes time to draw the control regions for each sub-sampling, hence the number of sub-sampling and permutation has been decreased in this report. For the paper high performance computing was used to run a thousand times a hundred sub-sampling.
-
-``` r
-enr.all.ss.med = enr.all.ss %>% group_by(feat, project) %>% summarize(enr.med = median(enr))
-enr.all %>% filter(set == "exp") %>% mutate(batch = cut(rep, NB.PERMS)) %>% 
-    group_by(feat, project, rep, batch) %>% summarize(enr = prop[!control]/prop[control]) %>% 
-    group_by(project, feat, batch) %>% summarize(enr = median(enr)) %>% merge(enr.all.ss.med) %>% 
-    group_by(feat, batch) %>% summarize(epi.enr = enr[project == "patients"] - 
-    enr[project != "patients"], epi.med = enr.med[project == "patients"] - enr.med[project != 
-    "patients"], epi.enr = epi.enr > epi.med) %>% group_by(feat) %>% summarize(pv = (1 + 
-    sum(epi.enr))/(1 + n())) %>% kable
-```
-
-| feat     |        pv|
-|:---------|---------:|
-| exon     |  1.000000|
-| exon.pli |  0.047619|
+The empirical P-value from the 10,000 permutations:
 
 ``` r
-enr.rare.ss.med = enr.rare.ss %>% group_by(feat, project) %>% summarize(enr.med = median(enr))
-enr.rare %>% filter(set == "exp") %>% mutate(batch = cut(rep, NB.PERMS)) %>% 
-    group_by(feat, project, rep, batch) %>% summarize(enr = prop[!control]/prop[control]) %>% 
-    group_by(project, feat, batch) %>% summarize(enr = median(enr)) %>% merge(enr.rare.ss.med) %>% 
-    group_by(feat, batch) %>% summarize(epi.enr = enr[project == "patients"] - 
-    enr[project != "patients"], epi.med = enr.med[project == "patients"] - enr.med[project != 
-    "patients"], epi.enr = epi.enr > epi.med) %>% group_by(feat) %>% summarize(pv = (1 + 
-    sum(epi.enr))/(1 + n())) %>% kable
+enr.obs.diff %>% dplyr::rename(diff.obs = diff) %>% merge(enr.exp.diff) %>% 
+    group_by(set, feat) %>% summarize(pv.enr = (sum(diff >= diff.obs) + 1)/(n() + 
+    1), pv.dep = (sum(diff <= diff.obs) + 1)/(n() + 1)) %>% kable
 ```
 
-| feat     |        pv|
-|:---------|---------:|
-| exon     |  0.047619|
-| exon.pli |  0.047619|
-
-### Permutation test: a resampling trick
-
-**This is not what was used for the paper**, but rather an approximation of the time-consuming permutations used for the paper.
-
-We can approximate the permuted P-value by resampling the sub-sampling.
-
-``` r
-NEW.NB.PERMS = 1000
-NEW.NB.SUBSAMP = 100
-bootstrapEnr <- function(df, nb.bs, nb.ss) {
-    data.frame(batch = 1:nb.bs, enr = sapply(1:nb.bs, function(ii) median(sample(df$enr, 
-        nb.ss))))
-}
-
-enr.all %>% filter(set == "exp") %>% group_by(feat, project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% 
-    group_by(project, feat) %>% do(bootstrapEnr(., NEW.NB.PERMS, NEW.NB.SUBSAMP)) %>% 
-    merge(enr.all.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr = enr[project == 
-    "patients"] - enr[project != "patients"], epi.med = enr.med[project == "patients"] - 
-    enr.med[project != "patients"], epi.enr = epi.enr > epi.med) %>% group_by(feat) %>% 
-    summarize(pv = (1 + sum(epi.enr))/(1 + n())) %>% kable
-```
-
-| feat     |        pv|
-|:---------|---------:|
-| exon     |  1.000000|
-| exon.pli |  0.000999|
-
-``` r
-enr.rare %>% filter(set == "exp") %>% group_by(feat, project, rep) %>% summarize(enr = prop[!control]/prop[control]) %>% 
-    group_by(project, feat) %>% do(bootstrapEnr(., NEW.NB.PERMS, NEW.NB.SUBSAMP)) %>% 
-    merge(enr.rare.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr = enr[project == 
-    "patients"] - enr[project != "patients"], epi.med = enr.med[project == "patients"] - 
-    enr.med[project != "patients"], epi.enr = epi.enr > epi.med) %>% group_by(feat) %>% 
-    summarize(pv = (1 + sum(epi.enr))/(1 + n())) %>% kable
-```
-
-| feat     |        pv|
-|:---------|---------:|
-| exon     |  0.002997|
-| exon.pli |  0.000999|
+| set                   | feat     |     pv.enr|     pv.dep|
+|:----------------------|:---------|----------:|----------:|
+| all CNVs &gt; 50 Kbp  | exon     |  0.2154785|  0.7846215|
+| all CNVs &gt; 50 Kbp  | exon.pli |  0.0001000|  1.0000000|
+| rare CNVs &gt; 50 Kbp | exon     |  0.0001000|  1.0000000|
+| rare CNVs &gt; 50 Kbp | exon.pli |  0.0001000|  1.0000000|
+| all CNVs &lt; 50 Kbp  | exon     |  0.6210379|  0.3790621|
+| all CNVs &lt; 50 Kbp  | exon.pli |  0.0001000|  1.0000000|
+| rare CNVs &lt; 50 Kbp | exon     |  0.0001000|  1.0000000|
+| rare CNVs &lt; 50 Kbp | exon.pli |  0.0001000|  1.0000000|
 
 Rare exonic CNVs are less private in the epilepsy cohort
 --------------------------------------------------------
@@ -249,10 +160,11 @@ rare.ex.f %>% group_by(project, nb, rep) %>% summarize(n = n()/nb[1]) %>% group_
     ymax = cprop.95), colour = FALSE, alpha = 0.2) + geom_line(alpha = 0.7) + 
     geom_point(size = 2) + scale_colour_brewer(name = "", palette = "Set1") + 
     scale_fill_brewer(name = "", palette = "Set1") + theme_bw() + scale_x_continuous(breaks = 2:10, 
-    labels = paste0(c(2:10), "+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs")
+    labels = paste0(c(2:10), "+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs") + 
+    theme(legend.position = c(0.99, 0.99), legend.justification = c(1, 1))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-8-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-5-1.png)
 
 ### Same after exteme samples removal
 
@@ -274,10 +186,11 @@ rare.ex.f.noext %>% group_by(project, nb, rep) %>% summarize(n = n()/nb[1]) %>%
     scale_colour_brewer(name = "", palette = "Set1") + scale_fill_brewer(name = "", 
     palette = "Set1") + theme_bw() + scale_x_continuous(breaks = 2:10, labels = paste0(c(2:10), 
     "+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs") + 
-    ggtitle("Top 20 most extreme samples removed")
+    ggtitle("Top 20 most extreme samples removed") + theme(legend.position = c(0.99, 
+    0.99), legend.justification = c(1, 1))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-9-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-6-1.png)
 
 ### French-Canadians only
 
@@ -297,10 +210,11 @@ rare.ex.fc %>% group_by(project, nb, rep) %>% summarize(n = n()/nb[1]) %>% group
     geom_point(size = 2) + scale_colour_brewer(name = "", palette = "Set1") + 
     scale_fill_brewer(name = "", palette = "Set1") + theme_bw() + scale_x_continuous(breaks = 2:10, 
     labels = paste0(c(2:10), "+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs") + 
-    ggtitle("French-Canadians only")
+    ggtitle("French-Canadians only") + theme(legend.position = c(0.99, 0.99), 
+    legend.justification = c(1, 1))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-10-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-7-1.png)
 
 ### Permutation test
 
@@ -344,8 +258,8 @@ kable(priv.test)
 | test                           |        pv|
 |:-------------------------------|---------:|
 | all samples                    |  0.000999|
-| top 20 extreme samples removed |  0.002997|
-| french-canadian                |  0.002997|
+| top 20 extreme samples removed |  0.005994|
+| french-canadian                |  0.001998|
 
 Non-coding rare CNVs
 --------------------
@@ -380,10 +294,11 @@ cnb.nc %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(pr
     y = cnb, colour = project, fill = project)) + geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, 
     ymin = cnb.5), linetype = 2, alpha = 0.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
     ylab("cumulative affected samples") + scale_fill_brewer(name = "", palette = "Set1") + 
-    scale_colour_brewer(name = "", palette = "Set1") + guides(alpha = FALSE)
+    scale_colour_brewer(name = "", palette = "Set1") + guides(alpha = FALSE) + 
+    theme(legend.position = c(0.99, 0.01), legend.justification = c(1, 0))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-14-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-11-1.png)
 
 ``` r
 cnb.nc.or = cnb.nc %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% 
@@ -395,7 +310,7 @@ ggplot(cnb.nc.or, aes(x = d/1000, y = log(odds.ratio))) + geom_area(alpha = 0.1)
     ylab("log odds ratio") + geom_hline(yintercept = 0, linetype = 2)
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-14-2.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-11-2.png)
 
 ``` r
 cnb.nc.or %>% filter(d %in% c(5000, 50000, 1e+05)) %>% kable
@@ -403,7 +318,7 @@ cnb.nc.or %>% filter(d %in% c(5000, 50000, 1e+05)) %>% kable
 
 |      d|  controls|  patients|  odds.ratio|
 |------:|---------:|---------:|-----------:|
-|  5e+03|        17|        30|    1.901261|
+|  5e+03|        16|        30|    2.031250|
 |  5e+04|        63|        76|    1.334895|
 |  1e+05|        89|       101|    1.275223|
 
@@ -416,7 +331,7 @@ ks.test(cnb.nc$exon.epi.d[which(cnb.nc$project == "controls")], cnb.nc$exon.epi.
     ##  Two-sample Kolmogorov-Smirnov test
     ## 
     ## data:  cnb.nc$exon.epi.d[which(cnb.nc$project == "controls")] and cnb.nc$exon.epi.d[which(cnb.nc$project != "controls")]
-    ## D = 0.13939, p-value = 0.005352
+    ## D = 0.14117, p-value = 0.004596
     ## alternative hypothesis: two-sided
 
 ``` r
@@ -428,7 +343,135 @@ wilcox.test(cnb.nc$exon.epi.d[which(cnb.nc$project == "controls")], cnb.nc$exon.
     ##  Wilcoxon rank sum test with continuity correction
     ## 
     ## data:  cnb.nc$exon.epi.d[which(cnb.nc$project == "controls")] and cnb.nc$exon.epi.d[which(cnb.nc$project != "controls")]
-    ## W = 1256000, p-value = 0.06621
+    ## W = 1253400, p-value = 0.06314
+    ## alternative hypothesis: true location shift is not equal to 0
+
+#### Deletions
+
+``` r
+cnb.nc.del = cnv.ss %>% filter(z < 0, prop.db < 0.01, nb < 10, !exon) %>% group_by(project, 
+    rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% filter(exon.epi.d < 
+    3e+05)
+cnb.nc.del %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, 
+    d) %>% summarize(cnb.5 = quantile(cnb, probs = 0.05), cnb.95 = quantile(cnb, 
+    probs = 0.95), cnb = median(cnb)) %>% filter(d < 3e+05) %>% ggplot(aes(x = d/1000, 
+    y = cnb, colour = project, fill = project)) + geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, 
+    ymin = cnb.5), linetype = 2, alpha = 0.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
+    ylab("cumulative affected samples") + scale_fill_brewer(name = "", palette = "Set1") + 
+    scale_colour_brewer(name = "", palette = "Set1") + guides(alpha = FALSE) + 
+    theme(legend.position = c(0.99, 0.01), legend.justification = c(1, 0))
+```
+
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/ncdel-1.png)
+
+``` r
+cnb.nc.del.or = cnb.nc.del %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% 
+    group_by(project, d) %>% summarize(cnb = median(cnb)) %>% filter(d < 3e+05) %>% 
+    spread(project, cnb) %>% mutate(odds.ratio = (patients/(198 - patients))/(controls/(198 - 
+    controls)))
+ggplot(cnb.nc.del.or, aes(x = d/1000, y = log(odds.ratio))) + geom_area(alpha = 0.1) + 
+    geom_line() + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
+    ylab("log odds ratio") + geom_hline(yintercept = 0, linetype = 2)
+```
+
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/ncdel-2.png)
+
+``` r
+cnb.nc.del.or %>% filter(d %in% c(5000, 50000, 1e+05)) %>% kable
+```
+
+|      d|  controls|  patients|  odds.ratio|
+|------:|---------:|---------:|-----------:|
+|  5e+03|        10|        21|    2.230509|
+|  5e+04|        38|        51|    1.460795|
+|  1e+05|        52|        69|    1.501789|
+
+``` r
+ks.test(cnb.nc.del$exon.epi.d[which(cnb.nc.del$project == "controls")], cnb.nc.del$exon.epi.d[which(cnb.nc.del$project != 
+    "controls")])
+```
+
+    ## 
+    ##  Two-sample Kolmogorov-Smirnov test
+    ## 
+    ## data:  cnb.nc.del$exon.epi.d[which(cnb.nc.del$project == "controls")] and cnb.nc.del$exon.epi.d[which(cnb.nc.del$project != "controls")]
+    ## D = 0.13865, p-value = 0.02944
+    ## alternative hypothesis: two-sided
+
+``` r
+wilcox.test(cnb.nc.del$exon.epi.d[which(cnb.nc.del$project == "controls")], 
+    cnb.nc.del$exon.epi.d[which(cnb.nc.del$project != "controls")])
+```
+
+    ## 
+    ##  Wilcoxon rank sum test with continuity correction
+    ## 
+    ## data:  cnb.nc.del$exon.epi.d[which(cnb.nc.del$project == "controls")] and cnb.nc.del$exon.epi.d[which(cnb.nc.del$project != "controls")]
+    ## W = 572050, p-value = 0.1412
+    ## alternative hypothesis: true location shift is not equal to 0
+
+#### Duplications
+
+``` r
+cnb.nc.dup = cnv.ss %>% filter(z > 0, prop.db < 0.01, nb < 10, !exon) %>% group_by(project, 
+    rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% filter(exon.epi.d < 
+    3e+05)
+cnb.nc.dup %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, 
+    d) %>% summarize(cnb.5 = quantile(cnb, probs = 0.05), cnb.95 = quantile(cnb, 
+    probs = 0.95), cnb = median(cnb)) %>% filter(d < 3e+05) %>% ggplot(aes(x = d/1000, 
+    y = cnb, colour = project, fill = project)) + geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, 
+    ymin = cnb.5), linetype = 2, alpha = 0.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
+    ylab("cumulative affected samples") + scale_fill_brewer(name = "", palette = "Set1") + 
+    scale_colour_brewer(name = "", palette = "Set1") + guides(alpha = FALSE) + 
+    theme(legend.position = c(0.99, 0.01), legend.justification = c(1, 0))
+```
+
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/ncdup-1.png)
+
+``` r
+cnb.nc.dup.or = cnb.nc.dup %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% 
+    group_by(project, d) %>% summarize(cnb = median(cnb)) %>% filter(d < 3e+05) %>% 
+    spread(project, cnb) %>% mutate(odds.ratio = (patients/(198 - patients))/(controls/(198 - 
+    controls)))
+ggplot(cnb.nc.dup.or, aes(x = d/1000, y = log(odds.ratio))) + geom_area(alpha = 0.1) + 
+    geom_line() + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
+    ylab("log odds ratio") + geom_hline(yintercept = 0, linetype = 2)
+```
+
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/ncdup-2.png)
+
+``` r
+cnb.nc.dup.or %>% filter(d %in% c(5000, 50000, 1e+05)) %>% kable
+```
+
+|      d|  controls|  patients|  odds.ratio|
+|------:|---------:|---------:|-----------:|
+|  5e+03|       6.0|        10|    1.702128|
+|  5e+04|      33.5|        35|    1.054391|
+|  1e+05|      52.0|        54|    1.052885|
+
+``` r
+ks.test(cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project == "controls")], cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project != 
+    "controls")])
+```
+
+    ## 
+    ##  Two-sample Kolmogorov-Smirnov test
+    ## 
+    ## data:  cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project == "controls")] and cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project != "controls")]
+    ## D = 0.11934, p-value = 0.1448
+    ## alternative hypothesis: two-sided
+
+``` r
+wilcox.test(cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project == "controls")], 
+    cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project != "controls")])
+```
+
+    ## 
+    ##  Wilcoxon rank sum test with continuity correction
+    ## 
+    ## data:  cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project == "controls")] and cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project != "controls")]
+    ## W = 508570, p-value = 0.2392
     ## alternative hypothesis: true location shift is not equal to 0
 
 ### Rare non-coding CNVs that overlaps functional annotations
@@ -445,10 +488,11 @@ cnb.df %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(pr
     y = cnb, colour = project, fill = project)) + geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, 
     ymin = cnb.5), alpha = 0.2, linetype = 2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
     ylab("cumulative affected samples") + scale_fill_brewer(name = "", palette = "Set1") + 
-    scale_colour_brewer(name = "", palette = "Set1")
+    scale_colour_brewer(name = "", palette = "Set1") + theme(legend.position = c(0.99, 
+    0.01), legend.justification = c(1, 0))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-12-1.png)
 
 ``` r
 cnb.or = cnb.df %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% 
@@ -460,7 +504,7 @@ ggplot(cnb.or, aes(x = d/1000, y = log(odds.ratio))) + geom_area(alpha = 0.1) +
     ylab("log odds ratio") + geom_hline(yintercept = 0, linetype = 2)
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-15-2.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-12-2.png)
 
 ``` r
 cnb.or %>% filter(d %in% c(5000, 50000, 1e+05)) %>% kable
@@ -481,7 +525,7 @@ ks.test(cnb.df$exon.epi.d[which(cnb.df$project == "controls")], cnb.df$exon.epi.
     ##  Two-sample Kolmogorov-Smirnov test
     ## 
     ## data:  cnb.df$exon.epi.d[which(cnb.df$project == "controls")] and cnb.df$exon.epi.d[which(cnb.df$project != "controls")]
-    ## D = 0.25954, p-value = 9.043e-05
+    ## D = 0.25847, p-value = 9.819e-05
     ## alternative hypothesis: two-sided
 
 ``` r
@@ -493,7 +537,7 @@ wilcox.test(cnb.df$exon.epi.d[which(cnb.df$project == "controls")], cnb.df$exon.
     ##  Wilcoxon rank sum test with continuity correction
     ## 
     ## data:  cnb.df$exon.epi.d[which(cnb.df$project == "controls")] and cnb.df$exon.epi.d[which(cnb.df$project != "controls")]
-    ## W = 360540, p-value = 3.152e-05
+    ## W = 358330, p-value = 4.259e-05
     ## alternative hypothesis: true location shift is not equal to 0
 
 ``` r
@@ -506,10 +550,11 @@ cnb.rec %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cn
     fill = project)) + geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, 
     ymin = cnb.5), alpha = 0.2, linetype = 2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
     ylab("cumulative affected samples") + ggtitle("Non-private") + scale_fill_brewer(name = "", 
-    palette = "Set1") + scale_colour_brewer(name = "", palette = "Set1")
+    palette = "Set1") + scale_colour_brewer(name = "", palette = "Set1") + theme(legend.position = c(0.99, 
+    0.01), legend.justification = c(1, 0))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-15-3.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-12-3.png)
 
 ``` r
 cnb.rec.or = cnb.rec %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% 
@@ -521,7 +566,7 @@ ggplot(cnb.rec.or, aes(x = d/1000, y = log(odds.ratio))) + geom_area(alpha = 0.1
     ylab("log odds ratio") + geom_hline(yintercept = 0, linetype = 2)
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-15-4.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-12-4.png)
 
 ``` r
 cnb.rec.or %>% filter(d %in% c(5000, 50000, 1e+05)) %>% kable
@@ -542,7 +587,7 @@ ks.test(cnb.rec$exon.epi.d[which(cnb.rec$project == "controls")], cnb.rec$exon.e
     ##  Two-sample Kolmogorov-Smirnov test
     ## 
     ## data:  cnb.rec$exon.epi.d[which(cnb.rec$project == "controls")] and cnb.rec$exon.epi.d[which(cnb.rec$project != "controls")]
-    ## D = 0.60384, p-value = 5.312e-07
+    ## D = 0.58257, p-value = 1.507e-06
     ## alternative hypothesis: two-sided
 
 ``` r
@@ -554,8 +599,44 @@ wilcox.test(cnb.rec$exon.epi.d[which(cnb.rec$project == "controls")], cnb.rec$ex
     ##  Wilcoxon rank sum test with continuity correction
     ## 
     ## data:  cnb.rec$exon.epi.d[which(cnb.rec$project == "controls")] and cnb.rec$exon.epi.d[which(cnb.rec$project != "controls")]
-    ## W = 31330, p-value = 8.564e-07
+    ## W = 31810, p-value = 3.064e-06
     ## alternative hypothesis: true location shift is not equal to 0
+
+#### Deletions
+
+``` r
+cnb.enh.del = cnv.ss %>% filter(z < 0, prop.db < 0.01, nb < 10, !exon, enhancer.epi) %>% 
+    group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% 
+    filter(exon.epi.d < 3e+05)
+cnb.enh.del %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, 
+    d) %>% summarize(cnb.5 = quantile(cnb, probs = 0.05), cnb.95 = quantile(cnb, 
+    probs = 0.95), cnb = median(cnb)) %>% filter(d < 3e+05) %>% ggplot(aes(x = d/1000, 
+    y = cnb, colour = project, fill = project)) + geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, 
+    ymin = cnb.5), linetype = 2, alpha = 0.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
+    ylab("cumulative affected samples") + scale_fill_brewer(name = "", palette = "Set1") + 
+    scale_colour_brewer(name = "", palette = "Set1") + guides(alpha = FALSE) + 
+    theme(legend.position = c(0.99, 0.01), legend.justification = c(1, 0))
+```
+
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/ncdelenh-1.png)
+
+#### Duplications
+
+``` r
+cnb.enh.dup = cnv.ss %>% filter(z > 0, prop.db < 0.01, nb < 10, !exon, enhancer.epi) %>% 
+    group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% 
+    filter(exon.epi.d < 3e+05)
+cnb.enh.dup %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, 
+    d) %>% summarize(cnb.5 = quantile(cnb, probs = 0.05), cnb.95 = quantile(cnb, 
+    probs = 0.95), cnb = median(cnb)) %>% filter(d < 3e+05) %>% ggplot(aes(x = d/1000, 
+    y = cnb, colour = project, fill = project)) + geom_line(size = 2) + geom_ribbon(aes(ymax = cnb.95, 
+    ymin = cnb.5), linetype = 2, alpha = 0.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + 
+    ylab("cumulative affected samples") + scale_fill_brewer(name = "", palette = "Set1") + 
+    scale_colour_brewer(name = "", palette = "Set1") + guides(alpha = FALSE) + 
+    theme(legend.position = c(0.99, 0.01), legend.justification = c(1, 0))
+```
+
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/ncdupenh-1.png)
 
 Rare CNVs hitting epilepsy genes
 --------------------------------
@@ -590,7 +671,7 @@ ggplot(gene.sum.n, aes(x = size, colour = set, linetype = set)) + stat_density(s
     1), legend.justification = c(0, 1))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
 Eventially we can check that the exonic sequence size and number of exons are also controlled by this approach.
 
@@ -602,7 +683,7 @@ ggplot(gene.sum.n, aes(x = exon.size, colour = set, linetype = set)) + stat_dens
     1), legend.justification = c(0, 1))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-17-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-14-1.png)
 
 ``` r
 ggplot(gene.sum.n, aes(x = nb.exon, colour = set, linetype = set)) + stat_density(size = 2, 
@@ -612,7 +693,7 @@ ggplot(gene.sum.n, aes(x = nb.exon, colour = set, linetype = set)) + stat_densit
     1), legend.justification = c(0, 1))
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-17-2.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-14-2.png)
 
 Then the new sampling-based test:
 
@@ -655,8 +736,8 @@ kable(test.epi.genes.sum)
 
 | test             |  fold.enr|  gene|  gene.epi|  gene.epi.cont|        pv|
 |:-----------------|---------:|-----:|---------:|--------------:|---------:|
-| allGenesDelNoDB  |  2.586732|   921|        17|          6.572|  0.000999|
-| sizeGenesDelNoDB |  1.744484|   921|        17|          9.745|  0.018981|
+| allGenesDelNoDB  |  2.620626|   921|        17|          6.487|  0.001998|
+| sizeGenesDelNoDB |  1.709917|   921|        17|          9.942|  0.016983|
 
 ``` r
 test.df = rbind(data.frame(exp = test.epi.genes$allGenesDelNoDB$exp, test = "all genes"), 
@@ -670,7 +751,7 @@ ggplot(test.df, aes(x = exp, fill = test)) + geom_histogram(position = "dodge",
     angle = -90)
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-19-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 ### Exploring the enrichments
 
@@ -702,11 +783,10 @@ enr.epi.freq = do.call(rbind, enr.epi.freq)
 ``` r
 ggplot(enr.epi.freq, aes(x = factor(freq), y = fold.enr, colour = project, group = project)) + 
     geom_line() + geom_point(aes(size = cut(pv, c(0, 0.05, 1)))) + theme_bw() + 
-    ylim(0, max(enr.epi.freq$fold.enr)) + scale_colour_hue() + geom_hline(yintercept = 1, 
-    linetype = 3) + scale_size_manual(name = "P-value", labels = c("<0.05", 
-    ">0.05"), values = c(4, 2)) + xlab("CNV frequency in public databases") + 
-    facet_grid(type ~ .) + ylab("fold-enrichment") + scale_colour_brewer(name = "", 
-    palette = "Set1")
+    ylim(0, max(enr.epi.freq$fold.enr)) + geom_hline(yintercept = 1, linetype = 3) + 
+    scale_size_manual(name = "P-value", labels = c("<0.05", ">0.05"), values = c(4, 
+        2)) + xlab("CNV frequency in public databases") + facet_grid(type ~ 
+    .) + ylab("fold-enrichment") + scale_colour_brewer(name = "", palette = "Set1")
 ```
 
-![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-22-1.png)
+![](epilepsy-enrichmentPatterns_files/figure-markdown_github/unnamed-chunk-19-1.png)

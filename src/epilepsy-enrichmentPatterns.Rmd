@@ -78,91 +78,44 @@ NB.CORES = 3
 
 ## Exonic enrichment
 
-### Preliminary analysis: Large CNVs enriched in exons in patients
+This part was run on a high-performance computing cluster.
+The code can be found in `epilepsy-enrichmentPatterns-HPC.R`.
 
-We first recover the previously described enrichment of large-rare exonic CNVs in patients compared to controls.
+Briefly, 150 samples were sub-sampled 100 times in the patient and in the control cohorts. 
+For each sub-sampling, the CNVs are merged per cohort and the catalogs are overlapped with exonic sequences.
+All genes and genes with a predicted loss-of-function intolerance (pLi>0.9) were used.
 
-```{r}
-permF <-  function(rr, cnv.df, feat.grl){
-    info.df %<>% group_by(project) %>% filter(sample %in% sample(unique(sample), 150))
-    cat.all = cnv.df %>% filter(sample %in% info.df$sample) %>% group_by(project) %>% do(reduceDf(.)) %>% mutate(sample=project, control=FALSE) %>% makeGRangesFromDataFrame(keep.extra.columns=TRUE)
-    cat.null = draw.controls(cat.all, list(centel=gen.feat.l$centel), nb.cores=1)
-    cat.null$project = cat.null$sample
-    cat.null$sample = cat.all$sample = NULL
-    cat.null$control = TRUE
-    cat.all = c(cat.all, cat.null)
-    res = lapply(1:length(feat.grl), function(ii){
-                     cat.all$ol = overlapsAny(cat.all, feat.grl[[ii]])
-                     obs = mcols(cat.all) %>% as.data.frame %>% group_by(control, project) %>% summarize(nb=sum(ol), prop=(1+nb)/(1+n())) %>% mutate(feat=names(feat.grl)[ii], rep=rr, set="obs")
-                     exp = mcols(cat.all) %>% as.data.frame %>% mutate(project=sample(project)) %>% group_by(control, project) %>% summarize(nb=sum(ol), prop=(1+nb)/(1+n())) %>% mutate(feat=names(feat.grl)[ii], rep=rr, set="exp")
-                     rbind(obs, exp)
-                 })
-    do.call(rbind, res)
-}
+To control for the CNV size distribution, control regions were randomly selected in the reference genome controlling for the size and overlap with assembly gaps.
+To test for differences between patients and controls, CNVs from the two cohorts were permuted 10,000 times and we saved the difference between the medians of the two groups (see boxplots below).
 
-exons.all.pli = exons.grl
-exons.all.pli$exon.epi = NULL
-enr.large.all = do.call(rbind, mclapply(1:100, permF, cnv.df=subset(cnv.all, end-start>5e4), feat.grl=exons.all.pli, mc.cores=NB.CORES))
-enr.large.rare = do.call(rbind, mclapply(1:100, permF, cnv.df=subset(cnv.all, end-start>5e4 & prop.db.50<.01), feat.grl=exons.all.pli, mc.cores=NB.CORES))
-enr.large.all.ss = enr.large.all %>% filter(set=="obs") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="all CNVs")
-enr.large.rare.ss = enr.large.rare %>% filter(set=="obs") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="rare CNVs")
-enr.large.s = rbind(enr.large.all.ss, enr.large.rare.ss)
-
-ggplot(enr.large.s, aes(x=feat, fill=project, y=winsorF(enr,2))) + geom_boxplot(notch=TRUE) + theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(.~set) + geom_hline(yintercept=1, linetype=2) + scale_fill_brewer(name="",palette="Set1")
-```
-
-
-### Sub-sampling and permutation
-
-Now using all the calls (mostly small CNVs), do we see the same exonic enrichment ?
-
-NOTE: This is 20 times less sub-sampling and permutations than in the paper, hence the signal might not be as clean. It might take more time but feel free to increase `NB.SUBSAMP` and `NB.PERMS`.
-
-```{r, cache=TRUE}
-NB.SUBSAMP = 100
-NB.PERMS = 20
-enr.all = do.call(rbind, mclapply(1:(NB.SUBSAMP*NB.PERMS), permF, cnv.df=cnv.all, feat.grl=exons.all.pli, mc.cores=NB.CORES))
-enr.rare = do.call(rbind, mclapply(1:(NB.SUBSAMP*NB.PERMS), permF, cnv.df=subset(cnv.all, prop.db<.01), feat.grl=exons.all.pli, mc.cores=NB.CORES))
-```
-
-### Graphs for a batch of sub-sampling
+We performed the analysis separately on *large* CNVs (>=50 Kbp) and *small* CNVs (<50 Kbp).
+We also run the analysis using rare CNVs (<1% frequency in the external SV databases) only.
 
 ```{r}
-enr.all.ss = enr.all %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="all CNVs")
-enr.rare.ss = enr.rare %>% filter(set=="obs", rep<=NB.SUBSAMP) %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% mutate(set="rare CNVs")
-enr.s = rbind(enr.all.ss, enr.rare.ss)
+load('../data/permExCnv.RData')
 
-ggplot(enr.s, aes(x=feat, fill=project, y=enr)) + geom_boxplot() + theme_bw() + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + facet_grid(.~set) + geom_hline(yintercept=1, linetype=2) + scale_fill_brewer(name="",palette="Set1")
+enr.obs = lapply(permExCnv, function(l)l$enr.obs)
+enr.obs = do.call(rbind, enr.obs)
+
+enr.obs %<>% mutate(freq=factor(freq, levels=c('all','rare'), labels=c("all CNVs","rare CNVs")), size=factor(size, levels=c('large', 'small'), labels=c("> 50 Kbp","< 50 Kbp")))
+
+ggplot(enr.obs, aes(x=feat, y=enr, fill=project)) + geom_boxplot(notch=TRUE) + theme_bw() + facet_grid(size~freq, scales='free') + xlab("") + ylab("fold-enrichment") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + geom_hline(yintercept=1, linetype=2) + scale_fill_brewer(name="",palette="Set1") + theme(legend.position=c(.01,.01), legend.justification=c(0,0))
+
+enr.exp.diff = lapply(permExCnv, function(l)l$enr.exp.diff)
+enr.exp.diff = do.call(rbind, enr.exp.diff)
+enr.exp.diff %<>% mutate(set=factor(paste(freq, size), levels=c('all large', 'rare large', 'all small', 'rare small'), labels=c('all CNVs > 50 Kbp', 'rare CNVs > 50 Kbp', 'all CNVs < 50 Kbp', 'rare CNVs < 50 Kbp')))
+
+enr.obs.diff = enr.obs %>% mutate(set=factor(paste(freq, size), levels=c('all CNVs > 50 Kbp', 'rare CNVs > 50 Kbp', 'all CNVs < 50 Kbp', 'rare CNVs < 50 Kbp'))) %>% group_by(set, feat, project) %>% summarize(enr=median(enr)) %>% group_by(set, feat) %>% summarize(diff=enr[project=='patients']-enr[project=='controls'])
+
+ggplot(enr.exp.diff, aes(x=feat, y=diff))  + geom_hline(yintercept=0, linetype=2) + geom_violin(fill='grey90') + geom_point(data=enr.obs.diff, size=5, color='red') + theme_bw() + facet_wrap(~set, scales='free', ncol=2) + xlab("") + ylab("difference between patients and controls") + scale_x_discrete(breaks=c("exon","exon.pli"), labels=c("all genes", "LoF\nintolerant\ngenes")) + scale_fill_brewer(name="",palette="Set1")
 ```
 
-### Permutation test
+*The grey violin plot shows the distribution of the differences across the 10,000 permutations. The red dot represents the difference observed between the patients and controls.*
 
-It takes time to draw the control regions for each sub-sampling, hence the number of sub-sampling and permutation has been decreased in this report. For the paper high performance computing was used to run a thousand times a hundred sub-sampling.
-
-```{r}
-enr.all.ss.med = enr.all.ss %>% group_by(feat, project) %>% summarize(enr.med=median(enr))
-enr.all %>% filter(set=="exp") %>% mutate(batch=cut(rep,NB.PERMS)) %>% group_by(feat, project, rep, batch) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat, batch) %>% summarize(enr=median(enr)) %>% merge(enr.all.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="patients"]-enr[project!="patients"], epi.med=enr.med[project=="patients"]-enr.med[project!="patients"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
-
-enr.rare.ss.med = enr.rare.ss %>% group_by(feat, project) %>% summarize(enr.med=median(enr))
-enr.rare %>% filter(set=="exp") %>% mutate(batch=cut(rep,NB.PERMS)) %>% group_by(feat, project, rep, batch) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat, batch) %>% summarize(enr=median(enr)) %>% merge(enr.rare.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="patients"]-enr[project!="patients"], epi.med=enr.med[project=="patients"]-enr.med[project!="patients"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
-```
-
-### Permutation test: a resampling trick
-
-**This is not what was used for the paper**, but rather an approximation of the time-consuming permutations used for the paper.
-
-We can approximate the permuted P-value by resampling the sub-sampling.
+The empirical P-value from the 10,000 permutations:
 
 ```{r}
-NEW.NB.PERMS = 1000
-NEW.NB.SUBSAMP = 100
-bootstrapEnr <- function(df, nb.bs, nb.ss){
-    data.frame(batch=1:nb.bs, enr=sapply(1:nb.bs, function(ii) median(sample(df$enr, nb.ss))))
-}
-
-enr.all %>% filter(set=="exp") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat) %>% do(bootstrapEnr(., NEW.NB.PERMS, NEW.NB.SUBSAMP)) %>% merge(enr.all.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="patients"]-enr[project!="patients"], epi.med=enr.med[project=="patients"]-enr.med[project!="patients"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
-
-enr.rare %>% filter(set=="exp") %>% group_by(feat, project, rep) %>% summarize(enr=prop[!control]/prop[control]) %>% group_by(project, feat) %>% do(bootstrapEnr(., NEW.NB.PERMS, NEW.NB.SUBSAMP)) %>% merge(enr.rare.ss.med) %>% group_by(feat, batch) %>% summarize(epi.enr=enr[project=="patients"]-enr[project!="patients"], epi.med=enr.med[project=="patients"]-enr.med[project!="patients"], epi.enr=epi.enr>epi.med) %>% group_by(feat) %>% summarize(pv=(1+sum(epi.enr))/(1+n())) %>% kable
+enr.obs.diff %>% dplyr::rename(diff.obs=diff) %>% merge(enr.exp.diff) %>% group_by(set, feat) %>% summarize(pv.enr=(sum(diff>=diff.obs)+1)/(n()+1), pv.dep=(sum(diff<=diff.obs)+1)/(n()+1)) %>% kable
 ```
 
 
@@ -173,7 +126,7 @@ enr.rare %>% filter(set=="exp") %>% group_by(feat, project, rep) %>% summarize(e
 ```{r}
 rare.ex = cnv.all %>% filter(prop.db<.01, exon)
 rare.ex.f = rare.ex %>% group_by(project) %>% do(freqSS(.))
-rare.ex.f %>% group_by(project, nb, rep) %>% summarize(n=n()/nb[1]) %>% group_by(project, rep) %>% arrange(desc(nb)) %>% mutate(cn=cumsum(n), cprop=cn/sum(n)) %>% filter(nb>1, nb<11) %>% group_by(project, nb) %>% summarize(cprop.5=quantile(cprop, probs=.05), cprop.95=quantile(cprop, probs=.95), cprop=median(cprop)) %>% ggplot(aes(x=nb, y=cprop, colour=project, fill=project)) + geom_ribbon(aes(ymin=cprop.5, ymax=cprop.95), colour=FALSE, alpha=.2) + geom_line(alpha=.7) + geom_point(size=2) + scale_colour_brewer(name="", palette="Set1") + scale_fill_brewer(name="", palette="Set1") + theme_bw() + scale_x_continuous(breaks=2:10, labels=paste0(c(2:10),"+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs")
+rare.ex.f %>% group_by(project, nb, rep) %>% summarize(n=n()/nb[1]) %>% group_by(project, rep) %>% arrange(desc(nb)) %>% mutate(cn=cumsum(n), cprop=cn/sum(n)) %>% filter(nb>1, nb<11) %>% group_by(project, nb) %>% summarize(cprop.5=quantile(cprop, probs=.05), cprop.95=quantile(cprop, probs=.95), cprop=median(cprop)) %>% ggplot(aes(x=nb, y=cprop, colour=project, fill=project)) + geom_ribbon(aes(ymin=cprop.5, ymax=cprop.95), colour=FALSE, alpha=.2) + geom_line(alpha=.7) + geom_point(size=2) + scale_colour_brewer(name="", palette="Set1") + scale_fill_brewer(name="", palette="Set1") + theme_bw() + scale_x_continuous(breaks=2:10, labels=paste0(c(2:10),"+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs") + theme(legend.position=c(.99,.99), legend.justification=c(1,1))
 ```
 
 ### Same after exteme samples removal
@@ -183,7 +136,7 @@ In each cohort, let's remove the top 20 samples with the most rare exonic non-pr
 ```{r}
 rare.epi.samp.o = rare.ex.f %>% filter(nb>1) %>% group_by(project, sample) %>% summarize(cnv=n()) %>% arrange(desc(cnv)) %>% group_by(project) %>% do(head(.,20))
 rare.ex.f.noext = rare.ex %>% filter(!(sample %in% rare.epi.samp.o$sample)) %>% group_by(project) %>% do(freqSS(., sample.size=178))
-rare.ex.f.noext %>% group_by(project, nb, rep) %>% summarize(n=n()/nb[1]) %>% group_by(project, rep) %>% arrange(desc(nb)) %>% mutate(cn=cumsum(n), cprop=cn/sum(n)) %>% filter(nb>1, nb<11) %>% group_by(project, nb) %>% summarize(cprop.5=quantile(cprop, probs=.05), cprop.95=quantile(cprop, probs=.95), cprop=median(cprop)) %>% ggplot(aes(x=nb, y=cprop, colour=project, fill=project)) + geom_ribbon(aes(ymin=cprop.5, ymax=cprop.95), colour=FALSE, alpha=.2) + geom_line(alpha=.7) + geom_point(size=2) + scale_colour_brewer(name="", palette="Set1") + scale_fill_brewer(name="", palette="Set1") + theme_bw() + scale_x_continuous(breaks=2:10, labels=paste0(c(2:10),"+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs") + ggtitle("Top 20 most extreme samples removed")
+rare.ex.f.noext %>% group_by(project, nb, rep) %>% summarize(n=n()/nb[1]) %>% group_by(project, rep) %>% arrange(desc(nb)) %>% mutate(cn=cumsum(n), cprop=cn/sum(n)) %>% filter(nb>1, nb<11) %>% group_by(project, nb) %>% summarize(cprop.5=quantile(cprop, probs=.05), cprop.95=quantile(cprop, probs=.95), cprop=median(cprop)) %>% ggplot(aes(x=nb, y=cprop, colour=project, fill=project)) + geom_ribbon(aes(ymin=cprop.5, ymax=cprop.95), colour=FALSE, alpha=.2) + geom_line(alpha=.7) + geom_point(size=2) + scale_colour_brewer(name="", palette="Set1") + scale_fill_brewer(name="", palette="Set1") + theme_bw() + scale_x_continuous(breaks=2:10, labels=paste0(c(2:10),"+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs") + ggtitle("Top 20 most extreme samples removed") + theme(legend.position=c(.99,.99), legend.justification=c(1,1))
 ```
 
 ### French-Canadians only
@@ -193,7 +146,7 @@ french.canadians = scan("../data/frenchCanadiansControls.txt", "a", quiet=TRUE)
 cnv.fc = cnv.all %>% filter(project=="patients" | sample %in% french.canadians)
 fc.ss = cnv.fc %>% select(sample, project) %>% unique %>% group_by(project) %>% summarize(n=n()) %>% .$n %>% unlist %>% min
 rare.ex.fc = cnv.fc %>% filter(exon, prop.db<.01) %>% group_by(project) %>% do(freqSS(., sample.size=fc.ss))
-rare.ex.fc %>% group_by(project, nb, rep) %>% summarize(n=n()/nb[1]) %>% group_by(project, rep) %>% arrange(desc(nb)) %>% mutate(cn=cumsum(n), cprop=cn/sum(n)) %>% filter(nb>1, nb<11) %>% group_by(project, nb) %>% summarize(cprop.5=quantile(cprop, probs=.05), cprop.95=quantile(cprop, probs=.95), cprop=median(cprop)) %>% ggplot(aes(x=nb, y=cprop, colour=project, fill=project)) + geom_ribbon(aes(ymin=cprop.5, ymax=cprop.95), colour=FALSE, alpha=.2) + geom_line(alpha=.7) + geom_point(size=2) + scale_colour_brewer(name="", palette="Set1") + scale_fill_brewer(name="", palette="Set1") + theme_bw() + scale_x_continuous(breaks=2:10, labels=paste0(c(2:10),"+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs") + ggtitle("French-Canadians only")
+rare.ex.fc %>% group_by(project, nb, rep) %>% summarize(n=n()/nb[1]) %>% group_by(project, rep) %>% arrange(desc(nb)) %>% mutate(cn=cumsum(n), cprop=cn/sum(n)) %>% filter(nb>1, nb<11) %>% group_by(project, nb) %>% summarize(cprop.5=quantile(cprop, probs=.05), cprop.95=quantile(cprop, probs=.95), cprop=median(cprop)) %>% ggplot(aes(x=nb, y=cprop, colour=project, fill=project)) + geom_ribbon(aes(ymin=cprop.5, ymax=cprop.95), colour=FALSE, alpha=.2) + geom_line(alpha=.7) + geom_point(size=2) + scale_colour_brewer(name="", palette="Set1") + scale_fill_brewer(name="", palette="Set1") + theme_bw() + scale_x_continuous(breaks=2:10, labels=paste0(c(2:10),"+")) + xlab("CNV recurrence") + ylab("proportion of rare exonic CNVs") + ggtitle("French-Canadians only") + theme(legend.position=c(.99,.99), legend.justification=c(1,1))
 ```
 
 ### Permutation test
@@ -243,7 +196,7 @@ cnv.ss = cnv.all %>% group_by(project) %>% do(freqEpiRareSS(., nb.rep=100))
 
 ```{r}
 cnb.nc = cnv.ss %>% filter(prop.db<.01, nb<10, !exon) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% filter(exon.epi.d<3e5)
-cnb.nc %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))  %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), linetype=2, alpha=.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1") + guides(alpha=FALSE)
+cnb.nc %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))  %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), linetype=2, alpha=.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1") + guides(alpha=FALSE) + theme(legend.position=c(.99,.01), legend.justification=c(1,0))
 
 cnb.nc.or = cnb.nc %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb=median(cnb)) %>% filter(d<3e5) %>% spread(project, cnb) %>% mutate(odds.ratio=(patients/(198-patients))/(controls/(198-controls)))
 ggplot(cnb.nc.or, aes(x=d/1e3, y=log(odds.ratio))) + geom_area(alpha=.1) + geom_line() + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("log odds ratio") + geom_hline(yintercept=0, linetype=2)
@@ -253,13 +206,43 @@ ks.test(cnb.nc$exon.epi.d[which(cnb.nc$project=='controls')], cnb.nc$exon.epi.d[
 wilcox.test(cnb.nc$exon.epi.d[which(cnb.nc$project=='controls')], cnb.nc$exon.epi.d[which(cnb.nc$project!='controls')])
 ```
 
+#### Deletions
+
+```{r ncdel}
+cnb.nc.del = cnv.ss %>% filter(z<0, prop.db<.01, nb<10, !exon) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% filter(exon.epi.d<3e5)
+cnb.nc.del %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))  %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), linetype=2, alpha=.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1") + guides(alpha=FALSE) + theme(legend.position=c(.99,.01), legend.justification=c(1,0))
+
+cnb.nc.del.or = cnb.nc.del %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb=median(cnb)) %>% filter(d<3e5) %>% spread(project, cnb) %>% mutate(odds.ratio=(patients/(198-patients))/(controls/(198-controls)))
+ggplot(cnb.nc.del.or, aes(x=d/1e3, y=log(odds.ratio))) + geom_area(alpha=.1) + geom_line() + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("log odds ratio") + geom_hline(yintercept=0, linetype=2)
+cnb.nc.del.or %>% filter(d %in% c(5e3, 5e4, 1e5)) %>% kable
+
+ks.test(cnb.nc.del$exon.epi.d[which(cnb.nc.del$project=='controls')], cnb.nc.del$exon.epi.d[which(cnb.nc.del$project!='controls')])
+wilcox.test(cnb.nc.del$exon.epi.d[which(cnb.nc.del$project=='controls')], cnb.nc.del$exon.epi.d[which(cnb.nc.del$project!='controls')])
+```
+
+#### Duplications
+
+```{r ncdup}
+cnb.nc.dup = cnv.ss %>% filter(z>0, prop.db<.01, nb<10, !exon) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% filter(exon.epi.d<3e5)
+cnb.nc.dup %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))  %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), linetype=2, alpha=.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1") + guides(alpha=FALSE) + theme(legend.position=c(.99,.01), legend.justification=c(1,0))
+
+cnb.nc.dup.or = cnb.nc.dup %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb=median(cnb)) %>% filter(d<3e5) %>% spread(project, cnb) %>% mutate(odds.ratio=(patients/(198-patients))/(controls/(198-controls)))
+ggplot(cnb.nc.dup.or, aes(x=d/1e3, y=log(odds.ratio))) + geom_area(alpha=.1) + geom_line() + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("log odds ratio") + geom_hline(yintercept=0, linetype=2)
+cnb.nc.dup.or %>% filter(d %in% c(5e3, 5e4, 1e5)) %>% kable
+
+ks.test(cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project=='controls')], cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project!='controls')])
+wilcox.test(cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project=='controls')], cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project!='controls')])
+```
+
+
+
 ### Rare non-coding CNVs that overlaps functional annotations
 
 Focusing on CNVs that overlaps an eQTL for the epilepsy gene, or a DNase I hypersensitive site associated to the promoter of the epilepsy gene.
 
 ```{r}
 cnb.df = cnv.ss %>% filter(prop.db<.01, nb<10, !exon, enhancer.epi) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample))  %>% filter(exon.epi.d<3e5)
-cnb.df %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))  %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1")
+cnb.df %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))  %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1") + theme(legend.position=c(.99,.01), legend.justification=c(1,0))
 
 cnb.or = cnb.df %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb=median(cnb)) %>% filter(d<3e5) %>% spread(project, cnb) %>% mutate(odds.ratio=(patients/(198-patients))/(controls/(198-controls)))
 ggplot(cnb.or, aes(x=d/1e3, y=log(odds.ratio))) + geom_area(alpha=.1) + geom_line() + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("log odds ratio") + geom_hline(yintercept=0, linetype=2)
@@ -269,7 +252,7 @@ ks.test(cnb.df$exon.epi.d[which(cnb.df$project=='controls')], cnb.df$exon.epi.d[
 wilcox.test(cnb.df$exon.epi.d[which(cnb.df$project=='controls')], cnb.df$exon.epi.d[which(cnb.df$project!='controls')])
 
 cnb.rec = cnv.ss %>% filter(prop.db<.01, nb>1, nb<10, !exon, enhancer.epi) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% filter(exon.epi.d<3e5)
-cnb.rec %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb)) %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + ggtitle("Non-private") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1")
+cnb.rec %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb)) %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), alpha=.2, linetype=2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + ggtitle("Non-private") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1") + theme(legend.position=c(.99,.01), legend.justification=c(1,0))
 
 cnb.rec.or = cnb.rec %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb=median(cnb)) %>% filter(d<3e5) %>% spread(project, cnb) %>% mutate(odds.ratio=(patients/(198-patients))/(controls/(198-controls)))
 ggplot(cnb.rec.or, aes(x=d/1e3, y=log(odds.ratio))) + geom_area(alpha=.1) + geom_line() + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("log odds ratio") + geom_hline(yintercept=0, linetype=2)
@@ -278,6 +261,21 @@ cnb.rec.or %>% filter(d %in% c(5e3, 5e4, 1e5)) %>% kable
 ks.test(cnb.rec$exon.epi.d[which(cnb.rec$project=='controls')], cnb.rec$exon.epi.d[which(cnb.rec$project!='controls')])
 wilcox.test(cnb.rec$exon.epi.d[which(cnb.rec$project=='controls')], cnb.rec$exon.epi.d[which(cnb.rec$project!='controls')])
 ```
+
+#### Deletions
+
+```{r ncdelenh}
+cnb.enh.del = cnv.ss %>% filter(z<0, prop.db<.01, nb<10, !exon, enhancer.epi) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% filter(exon.epi.d<3e5)
+cnb.enh.del %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))  %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), linetype=2, alpha=.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1") + guides(alpha=FALSE) + theme(legend.position=c(.99,.01), legend.justification=c(1,0))
+```
+
+#### Duplications
+
+```{r ncdupenh}
+cnb.enh.dup = cnv.ss %>% filter(z>0, prop.db<.01, nb<10, !exon, enhancer.epi) %>% group_by(project, rep) %>% arrange(exon.epi.d) %>% filter(!duplicated(sample)) %>% filter(exon.epi.d<3e5)
+cnb.enh.dup %>% group_by(project, rep) %>% do(decdf(., "exon.epi.d")) %>% group_by(project, d) %>% summarize(cnb.5=quantile(cnb, probs=.05), cnb.95=quantile(cnb, probs=.95), cnb=median(cnb))  %>% filter(d<3e5) %>% ggplot(aes(x=d/1e3, y=cnb, colour=project, fill=project)) + geom_line(size=2) + geom_ribbon(aes(ymax=cnb.95, ymin=cnb.5), linetype=2, alpha=.2) + theme_bw() + xlab("distance to nearest epilepsy exon (kb)") + ylab("cumulative affected samples") + scale_fill_brewer(name="",palette="Set1") + scale_colour_brewer(name="",palette="Set1") + guides(alpha=FALSE) + theme(legend.position=c(.99,.01), legend.justification=c(1,0))
+```
+
 
 
 ## Rare CNVs hitting epilepsy genes
@@ -378,5 +376,10 @@ enr.epi.freq = do.call(rbind, enr.epi.freq)
 ```
 
 ```{r}
-ggplot(enr.epi.freq, aes(x=factor(freq), y=fold.enr, colour=project, group=project)) + geom_line() + geom_point(aes(size=cut(pv, c(0,.05,1)))) + theme_bw() + ylim(0, max(enr.epi.freq$fold.enr)) + scale_colour_hue() + geom_hline(yintercept=1, linetype=3) + scale_size_manual(name="P-value", labels=c("<0.05",">0.05"), values=c(4,2)) + xlab("CNV frequency in public databases") + facet_grid(type~.) + ylab("fold-enrichment") + scale_colour_brewer(name="",palette="Set1")
+ggplot(enr.epi.freq, aes(x=factor(freq), y=fold.enr, colour=project, group=project)) + geom_line() + geom_point(aes(size=cut(pv, c(0,.05,1)))) + theme_bw() + ylim(0, max(enr.epi.freq$fold.enr)) + geom_hline(yintercept=1, linetype=3) + scale_size_manual(name="P-value", labels=c("<0.05",">0.05"), values=c(4,2)) + xlab("CNV frequency in public databases") + facet_grid(type~.) + ylab("fold-enrichment") + scale_colour_brewer(name="",palette="Set1")
 ```
+
+```{r, echo=FALSE}
+save(enr.obs, enr.exp.diff, enr.obs.diff, rare.ex.f, rare.ex.f.noext, rare.ex.fc, cnb.nc, cnb.nc.del, cnb.df, gene.sum.n, test.df, test.epi.genes, enr.epi.freq, file='epilepsy-enrichmentPatterns.RData')
+```
+
