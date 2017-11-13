@@ -220,6 +220,12 @@ ks.test(cnb.nc.del$exon.epi.d[which(cnb.nc.del$project=='controls')], cnb.nc.del
 wilcox.test(cnb.nc.del$exon.epi.d[which(cnb.nc.del$project=='controls')], cnb.nc.del$exon.epi.d[which(cnb.nc.del$project!='controls')])
 ```
 
+To go further we test each epilepsy gene to see if it has more rare non-coding deletions in the epilepsy cohort versus the controls.
+
+```{r ncdelgene}
+cnv.all %>% filter(!exon, prop.db<.01, exon.epi.d<2e5, z<0) %>% group_by(exon.epi.closest, project) %>% summarize(sample=length(unique(sample))) %>% spread(project, sample, fill=0) %>% mutate(pv=fisher.test(cbind(c(301-controls, controls), c(198-patients, patients)))$p.value) %>% arrange(pv) %>% ungroup %>% head(10) %>% kable
+```
+
 #### Duplications
 
 ```{r ncdup}
@@ -379,7 +385,7 @@ enr.epi.freq = do.call(rbind, enr.epi.freq)
 ggplot(enr.epi.freq, aes(x=factor(freq), y=fold.enr, colour=project, group=project)) + geom_line() + geom_point(aes(size=cut(pv, c(0,.05,1)))) + theme_bw() + ylim(0, max(enr.epi.freq$fold.enr)) + geom_hline(yintercept=1, linetype=3) + scale_size_manual(name="P-value", labels=c("<0.05",">0.05"), values=c(4,2)) + xlab("CNV frequency in public databases") + facet_grid(type~.) + ylab("fold-enrichment") + scale_colour_brewer(name="",palette="Set1")
 ```
 
-```{r, echo=FALSE}
-save(enr.obs, enr.exp.diff, enr.obs.diff, rare.ex.f, rare.ex.f.noext, rare.ex.fc, cnb.nc, cnb.nc.del, cnb.df, gene.sum.n, test.df, test.epi.genes, enr.epi.freq, file='epilepsy-enrichmentPatterns.RData')
+```{r, include=FALSE}
+save(enr.obs, enr.exp.diff, enr.obs.diff, rare.ex.f, rare.ex.f.noext, rare.ex.fc, cnb.nc, cnb.nc.del, cnb.df, cnb.or, gene.sum.n, test.df, test.epi.genes, enr.epi.freq, file='epilepsy-enrichmentPatterns.RData')
 ```
 

@@ -75,11 +75,11 @@ Exonic enrichment
 
 This part was run on a high-performance computing cluster. The code can be found in `epilepsy-enrichmentPatterns-HPC.R`.
 
-Briefly, 150 samples were sub-sampled 100 times in the patient and in the control cohorts. For each sub-sampling, the CNVs are merged per cohort and the catalogs are overlapped with exonic sequences. All genes and genes with a predicted loss-of-function intolerance (pLi&gt;0.9) were used.
+Briefly, 150 samples were sub-sampled 100 times in the patient and in the control cohorts. For each sub-sampling, the CNVs are merged per cohort and the catalogs are overlapped with exonic sequences. All genes and genes with a predicted loss-of-function intolerance (pLi\>0.9) were used.
 
 To control for the CNV size distribution, control regions were randomly selected in the reference genome controlling for the size and overlap with assembly gaps. To test for differences between patients and controls, CNVs from the two cohorts were permuted 10,000 times and we saved the difference between the medians of the two groups (see boxplots below).
 
-We performed the analysis separately on *large* CNVs (&gt;=50 Kbp) and *small* CNVs (&lt;50 Kbp). We also run the analysis using rare CNVs (&lt;1% frequency in the external SV databases) only.
+We performed the analysis separately on *large* CNVs (\>=50 Kbp) and *small* CNVs (\<50 Kbp). We also run the analysis using rare CNVs (\<1% frequency in the external SV databases) only.
 
 ``` r
 load("../data/permExCnv.RData")
@@ -133,16 +133,16 @@ enr.obs.diff %>% dplyr::rename(diff.obs = diff) %>% merge(enr.exp.diff) %>%
     1), pv.dep = (sum(diff <= diff.obs) + 1)/(n() + 1)) %>% kable
 ```
 
-| set                   | feat     |     pv.enr|     pv.dep|
-|:----------------------|:---------|----------:|----------:|
-| all CNVs &gt; 50 Kbp  | exon     |  0.2154785|  0.7846215|
-| all CNVs &gt; 50 Kbp  | exon.pli |  0.0001000|  1.0000000|
-| rare CNVs &gt; 50 Kbp | exon     |  0.0001000|  1.0000000|
-| rare CNVs &gt; 50 Kbp | exon.pli |  0.0001000|  1.0000000|
-| all CNVs &lt; 50 Kbp  | exon     |  0.6210379|  0.3790621|
-| all CNVs &lt; 50 Kbp  | exon.pli |  0.0001000|  1.0000000|
-| rare CNVs &lt; 50 Kbp | exon     |  0.0001000|  1.0000000|
-| rare CNVs &lt; 50 Kbp | exon.pli |  0.0001000|  1.0000000|
+| set                 | feat     |     pv.enr|     pv.dep|
+|:--------------------|:---------|----------:|----------:|
+| all CNVs \> 50 Kbp  | exon     |  0.2154785|  0.7846215|
+| all CNVs \> 50 Kbp  | exon.pli |  0.0001000|  1.0000000|
+| rare CNVs \> 50 Kbp | exon     |  0.0001000|  1.0000000|
+| rare CNVs \> 50 Kbp | exon.pli |  0.0001000|  1.0000000|
+| all CNVs \< 50 Kbp  | exon     |  0.6210379|  0.3790621|
+| all CNVs \< 50 Kbp  | exon.pli |  0.0001000|  1.0000000|
+| rare CNVs \< 50 Kbp | exon     |  0.0001000|  1.0000000|
+| rare CNVs \< 50 Kbp | exon.pli |  0.0001000|  1.0000000|
 
 Rare exonic CNVs are less private in the epilepsy cohort
 --------------------------------------------------------
@@ -258,7 +258,7 @@ kable(priv.test)
 | test                           |        pv|
 |:-------------------------------|---------:|
 | all samples                    |  0.000999|
-| top 20 extreme samples removed |  0.005994|
+| top 20 extreme samples removed |  0.000999|
 | french-canadian                |  0.001998|
 
 Non-coding rare CNVs
@@ -318,9 +318,9 @@ cnb.nc.or %>% filter(d %in% c(5000, 50000, 1e+05)) %>% kable
 
 |      d|  controls|  patients|  odds.ratio|
 |------:|---------:|---------:|-----------:|
-|  5e+03|        16|        30|    2.031250|
-|  5e+04|        63|        76|    1.334895|
-|  1e+05|        89|       101|    1.275223|
+|  5e+03|        17|        30|    1.901261|
+|  5e+04|        62|        76|    1.366473|
+|  1e+05|        88|       101|    1.301546|
 
 ``` r
 ks.test(cnb.nc$exon.epi.d[which(cnb.nc$project == "controls")], cnb.nc$exon.epi.d[which(cnb.nc$project != 
@@ -331,7 +331,7 @@ ks.test(cnb.nc$exon.epi.d[which(cnb.nc$project == "controls")], cnb.nc$exon.epi.
     ##  Two-sample Kolmogorov-Smirnov test
     ## 
     ## data:  cnb.nc$exon.epi.d[which(cnb.nc$project == "controls")] and cnb.nc$exon.epi.d[which(cnb.nc$project != "controls")]
-    ## D = 0.14117, p-value = 0.004596
+    ## D = 0.13944, p-value = 0.00533
     ## alternative hypothesis: two-sided
 
 ``` r
@@ -343,7 +343,7 @@ wilcox.test(cnb.nc$exon.epi.d[which(cnb.nc$project == "controls")], cnb.nc$exon.
     ##  Wilcoxon rank sum test with continuity correction
     ## 
     ## data:  cnb.nc$exon.epi.d[which(cnb.nc$project == "controls")] and cnb.nc$exon.epi.d[which(cnb.nc$project != "controls")]
-    ## W = 1253400, p-value = 0.06314
+    ## W = 1247900, p-value = 0.06973
     ## alternative hypothesis: true location shift is not equal to 0
 
 #### Deletions
@@ -395,7 +395,7 @@ ks.test(cnb.nc.del$exon.epi.d[which(cnb.nc.del$project == "controls")], cnb.nc.d
     ##  Two-sample Kolmogorov-Smirnov test
     ## 
     ## data:  cnb.nc.del$exon.epi.d[which(cnb.nc.del$project == "controls")] and cnb.nc.del$exon.epi.d[which(cnb.nc.del$project != "controls")]
-    ## D = 0.13865, p-value = 0.02944
+    ## D = 0.14261, p-value = 0.02305
     ## alternative hypothesis: two-sided
 
 ``` r
@@ -407,8 +407,31 @@ wilcox.test(cnb.nc.del$exon.epi.d[which(cnb.nc.del$project == "controls")],
     ##  Wilcoxon rank sum test with continuity correction
     ## 
     ## data:  cnb.nc.del$exon.epi.d[which(cnb.nc.del$project == "controls")] and cnb.nc.del$exon.epi.d[which(cnb.nc.del$project != "controls")]
-    ## W = 572050, p-value = 0.1412
+    ## W = 573640, p-value = 0.1291
     ## alternative hypothesis: true location shift is not equal to 0
+
+To go further we test each epilepsy gene to see if it has more rare non-coding deletions in the epilepsy cohort versus the controls.
+
+``` r
+cnv.all %>% filter(!exon, prop.db < 0.01, exon.epi.d < 2e+05, z < 0) %>% group_by(exon.epi.closest, 
+    project) %>% summarize(sample = length(unique(sample))) %>% spread(project, 
+    sample, fill = 0) %>% mutate(pv = fisher.test(cbind(c(301 - controls, controls), 
+    c(198 - patients, patients)))$p.value) %>% arrange(pv) %>% ungroup %>% head(10) %>% 
+    kable
+```
+
+| exon.epi.closest |  controls|  patients|         pv|
+|:-----------------|---------:|---------:|----------:|
+| GABRD            |         0|         4|  0.0243363|
+| DNM1             |         0|         3|  0.0619015|
+| NGLY1            |         0|         3|  0.0619015|
+| SERPINI1         |         0|         3|  0.0619015|
+| RYR2             |         1|         4|  0.0835300|
+| GRIN2B           |         2|         5|  0.1198971|
+| B3GNT4           |         0|         2|  0.1569645|
+| CACNB4           |         0|         2|  0.1569645|
+| SLC2A1           |         0|         2|  0.1569645|
+| RBFOX1           |         9|        11|  0.1671548|
 
 #### Duplications
 
@@ -446,9 +469,9 @@ cnb.nc.dup.or %>% filter(d %in% c(5000, 50000, 1e+05)) %>% kable
 
 |      d|  controls|  patients|  odds.ratio|
 |------:|---------:|---------:|-----------:|
-|  5e+03|       6.0|        10|    1.702128|
-|  5e+04|      33.5|        35|    1.054391|
-|  1e+05|      52.0|        54|    1.052885|
+|  5e+03|         7|        10|    1.451368|
+|  5e+04|        33|        35|    1.073620|
+|  1e+05|        52|        54|    1.052885|
 
 ``` r
 ks.test(cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project == "controls")], cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project != 
@@ -459,7 +482,7 @@ ks.test(cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project == "controls")], cnb.nc.d
     ##  Two-sample Kolmogorov-Smirnov test
     ## 
     ## data:  cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project == "controls")] and cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project != "controls")]
-    ## D = 0.11934, p-value = 0.1448
+    ## D = 0.11698, p-value = 0.1604
     ## alternative hypothesis: two-sided
 
 ``` r
@@ -471,7 +494,7 @@ wilcox.test(cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project == "controls")],
     ##  Wilcoxon rank sum test with continuity correction
     ## 
     ## data:  cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project == "controls")] and cnb.nc.dup$exon.epi.d[which(cnb.nc.dup$project != "controls")]
-    ## W = 508570, p-value = 0.2392
+    ## W = 506430, p-value = 0.2476
     ## alternative hypothesis: true location shift is not equal to 0
 
 ### Rare non-coding CNVs that overlaps functional annotations
@@ -512,9 +535,9 @@ cnb.or %>% filter(d %in% c(5000, 50000, 1e+05)) %>% kable
 
 |      d|  controls|  patients|  odds.ratio|
 |------:|---------:|---------:|-----------:|
-|  5e+03|         7|        19|    2.896249|
+|  5e+03|         8|        19|    2.520950|
 |  5e+04|        31|        45|    1.584440|
-|  1e+05|        48|        59|    1.326439|
+|  1e+05|        49|        59|    1.290706|
 
 ``` r
 ks.test(cnb.df$exon.epi.d[which(cnb.df$project == "controls")], cnb.df$exon.epi.d[which(cnb.df$project != 
@@ -525,7 +548,7 @@ ks.test(cnb.df$exon.epi.d[which(cnb.df$project == "controls")], cnb.df$exon.epi.
     ##  Two-sample Kolmogorov-Smirnov test
     ## 
     ## data:  cnb.df$exon.epi.d[which(cnb.df$project == "controls")] and cnb.df$exon.epi.d[which(cnb.df$project != "controls")]
-    ## D = 0.25847, p-value = 9.819e-05
+    ## D = 0.25554, p-value = 0.0001227
     ## alternative hypothesis: two-sided
 
 ``` r
@@ -537,7 +560,7 @@ wilcox.test(cnb.df$exon.epi.d[which(cnb.df$project == "controls")], cnb.df$exon.
     ##  Wilcoxon rank sum test with continuity correction
     ## 
     ## data:  cnb.df$exon.epi.d[which(cnb.df$project == "controls")] and cnb.df$exon.epi.d[which(cnb.df$project != "controls")]
-    ## W = 358330, p-value = 4.259e-05
+    ## W = 362060, p-value = 3.692e-05
     ## alternative hypothesis: true location shift is not equal to 0
 
 ``` r
@@ -587,7 +610,7 @@ ks.test(cnb.rec$exon.epi.d[which(cnb.rec$project == "controls")], cnb.rec$exon.e
     ##  Two-sample Kolmogorov-Smirnov test
     ## 
     ## data:  cnb.rec$exon.epi.d[which(cnb.rec$project == "controls")] and cnb.rec$exon.epi.d[which(cnb.rec$project != "controls")]
-    ## D = 0.58257, p-value = 1.507e-06
+    ## D = 0.60355, p-value = 5.373e-07
     ## alternative hypothesis: two-sided
 
 ``` r
@@ -599,7 +622,7 @@ wilcox.test(cnb.rec$exon.epi.d[which(cnb.rec$project == "controls")], cnb.rec$ex
     ##  Wilcoxon rank sum test with continuity correction
     ## 
     ## data:  cnb.rec$exon.epi.d[which(cnb.rec$project == "controls")] and cnb.rec$exon.epi.d[which(cnb.rec$project != "controls")]
-    ## W = 31810, p-value = 3.064e-06
+    ## W = 31706, p-value = 1.255e-06
     ## alternative hypothesis: true location shift is not equal to 0
 
 #### Deletions
@@ -736,8 +759,8 @@ kable(test.epi.genes.sum)
 
 | test             |  fold.enr|  gene|  gene.epi|  gene.epi.cont|        pv|
 |:-----------------|---------:|-----:|---------:|--------------:|---------:|
-| allGenesDelNoDB  |  2.620626|   921|        17|          6.487|  0.001998|
-| sizeGenesDelNoDB |  1.709917|   921|        17|          9.942|  0.016983|
+| allGenesDelNoDB  |  2.642624|   921|        17|          6.433|  0.000999|
+| sizeGenesDelNoDB |  1.764217|   921|        17|          9.636|  0.018981|
 
 ``` r
 test.df = rbind(data.frame(exp = test.epi.genes$allGenesDelNoDB$exp, test = "all genes"), 

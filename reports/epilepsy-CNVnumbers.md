@@ -190,13 +190,13 @@ prop.test(as.matrix(del.dup.ds[, -1]))
     ##  correction
     ## 
     ## data:  as.matrix(del.dup.ds[, -1])
-    ## X-squared = 28.349, df = 1, p-value = 1.013e-07
+    ## X-squared = 103.42, df = 1, p-value < 2.2e-16
     ## alternative hypothesis: two.sided
     ## 95 percent confidence interval:
-    ##  -0.03719191 -0.01713421
+    ##  -0.06200126 -0.04191712
     ## sample estimates:
     ##    prop 1    prop 2 
-    ## 0.5807593 0.6079224
+    ## 0.5559632 0.6079224
 
 CNVs and epilepsy genes
 -----------------------

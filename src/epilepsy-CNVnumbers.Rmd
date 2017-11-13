@@ -130,3 +130,7 @@ sum.epi = rbind(cnv.all %>% filter(project=="patients", prop.db<.01) %>% group_b
 
 ggplot(sum.epi, aes(x=sample, y=cnv, fill=d)) + geom_bar(stat="identity", color="black",size=.1) + theme_bw() + theme(axis.text.x=element_blank(),legend.position=c(1,0.2), legend.justification=c(1,0.2)) + xlab("sample") + ylab("rare CNV") + scale_fill_brewer(name="distance to closest exon", palette="Spectral") + facet_grid(gene~., scales="free") + guides(fill = guide_legend(nrow = 1, label.position = "right", label.hjust=0.5))
 ```
+
+```{r include=FALSE}
+save(cnv.epi.s, cat.epi, sum.epi, file='epilepsy-CNVnumbers.RData')
+```
