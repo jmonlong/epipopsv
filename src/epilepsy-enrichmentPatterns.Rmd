@@ -361,7 +361,7 @@ ggplot(test.df, aes(x=exp, fill=test)) + geom_histogram(position="dodge", binwid
 
 ### Exploring the enrichments
 
-Here again, the number of permutations has been decreased compared to what was used in the study.
+Here, the number of permutations has been decreased compared to what was used in the study.
 
 ```{r}
 cnv.sets = cnv.all %>% mutate(type=ifelse(z<0, "deletion","duplication")) %>% select(project, sample, chr, start, end, type) %>% as.data.frame
