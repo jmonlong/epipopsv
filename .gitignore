@@ -2,3 +2,6 @@
 *_cache
 data
 .Rhistory
+src/*.pdf
+src/*.RData
+src/*.csv
